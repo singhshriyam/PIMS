@@ -10,7 +10,7 @@ import {
 } from '../../services/userService';
 
 import {
-  // fetchExpertTeamIncidents, // TODO: Implement this endpoint
+  fetchExpertTeamIncidents,
   getIncidentStats,
   getStatusColor,
   getPriorityColor,
@@ -27,47 +27,47 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 // FAKE DATA FOR DEMO - DELETE THIS WHEN REAL API IS READY
 // This fake data is temporarily used to show dashboard functionality
 // Remove this entire section once fetchExpertTeamIncidents() API endpoint is implemented
-export const EXPERT_TEAM_FAKE_DATA: Incident[] = [
-  {
-    id: 'demo-expert-1',
-    incident_no: 'EXP-2024-001',
-    status: 'in_progress',
-    category: { name: 'Complex Analysis' },
-    priority: 'Critical',
-    user: { name: 'Michael', last_name: 'Brown' },
-    created_at: '2024-01-14T09:15:00Z',
-    assigned_to: { name: 'Expert', last_name: 'Analyst' },
-    incidentstate: { name: 'inprogress' },
-    urgency: { name: 'Critical' },
-    short_description: 'Complex water quality analysis required for industrial discharge'
-  },
-  {
-    id: 'demo-expert-2',
-    incident_no: 'EXP-2024-002',
-    status: 'resolved',
-    category: { name: 'Technical Review' },
-    priority: 'High',
-    user: { name: 'Lisa', last_name: 'Davis' },
-    created_at: '2024-01-13T16:45:00Z',
-    assigned_to: { name: 'Expert', last_name: 'Analyst' },
-    incidentstate: { name: 'resolved' },
-    urgency: { name: 'High' },
-    short_description: 'Technical review of pollution control measures'
-  },
-  {
-    id: 'demo-expert-3',
-    incident_no: 'EXP-2024-003',
-    status: 'pending',
-    category: { name: 'Root Cause Analysis' },
-    priority: 'High',
-    user: { name: 'Robert', last_name: 'Wilson' },
-    created_at: '2024-01-16T11:30:00Z',
-    assigned_to: { name: 'Expert', last_name: 'Analyst' },
-    incidentstate: { name: 'new' },
-    urgency: { name: 'High' },
-    short_description: 'Root cause analysis for recurring chemical discharge violations'
-  }
-];
+// export const EXPERT_TEAM_FAKE_DATA: Incident[] = [
+//   {
+//     id: 'demo-expert-1',
+//     incident_no: 'EXP-2024-001',
+//     status: 'in_progress',
+//     category: { name: 'Complex Analysis' },
+//     priority: 'Critical',
+//     user: { name: 'Michael', last_name: 'Brown' },
+//     created_at: '2024-01-14T09:15:00Z',
+//     assigned_to: { name: 'Expert', last_name: 'Analyst' },
+//     incidentstate: { name: 'inprogress' },
+//     urgency: { name: 'Critical' },
+//     short_description: 'Complex water quality analysis required for industrial discharge'
+//   },
+//   {
+//     id: 'demo-expert-2',
+//     incident_no: 'EXP-2024-002',
+//     status: 'resolved',
+//     category: { name: 'Technical Review' },
+//     priority: 'High',
+//     user: { name: 'Lisa', last_name: 'Davis' },
+//     created_at: '2024-01-13T16:45:00Z',
+//     assigned_to: { name: 'Expert', last_name: 'Analyst' },
+//     incidentstate: { name: 'resolved' },
+//     urgency: { name: 'High' },
+//     short_description: 'Technical review of pollution control measures'
+//   },
+//   {
+//     id: 'demo-expert-3',
+//     incident_no: 'EXP-2024-003',
+//     status: 'pending',
+//     category: { name: 'Root Cause Analysis' },
+//     priority: 'High',
+//     user: { name: 'Robert', last_name: 'Wilson' },
+//     created_at: '2024-01-16T11:30:00Z',
+//     assigned_to: { name: 'Expert', last_name: 'Analyst' },
+//     incidentstate: { name: 'new' },
+//     urgency: { name: 'High' },
+//     short_description: 'Root cause analysis for recurring chemical discharge violations'
+//   }
+// ];
 
 const ExpertTeamDashboard = () => {
   const router = useRouter();
@@ -166,11 +166,8 @@ const ExpertTeamDashboard = () => {
         });
 
         // TODO: Implement fetchExpertTeamIncidents() endpoint
-        // const expertIncidents = await fetchExpertTeamIncidents();
+        const expertIncidents = await fetchExpertTeamIncidents();
 
-        // FAKE DATA FOR DEMO - DELETE THIS WHEN REAL API IS READY
-        // Using exported fake data for consistency across all views
-        const expertIncidents: Incident[] = EXPERT_TEAM_FAKE_DATA;
 
         // Log status breakdown for debugging
         const statusCounts = expertIncidents.reduce((acc, incident) => {
@@ -259,12 +256,8 @@ const ExpertTeamDashboard = () => {
     try {
       setDashboardData(prev => ({ ...prev, loading: true, error: null }));
 
-      // TODO: Implement fetchExpertTeamIncidents() endpoint
-      // const expertIncidents = await fetchExpertTeamIncidents();
-
-      // FAKE DATA FOR DEMO - DELETE THIS WHEN REAL API IS READY
-      // Using exported fake data for consistency across all views
-      const expertIncidents: Incident[] = EXPERT_TEAM_FAKE_DATA;
+      // Implement fetchExpertTeamIncidents() endpoint
+      const expertIncidents = await fetchExpertTeamIncidents();
 
       setDashboardData({
         myIncidents: expertIncidents,
