@@ -3,8 +3,6 @@ const API_BASE = 'https://apexwpc.apextechno.co.uk/api';
 // Helper function to get authentication headers
 const getAuthHeaders = () => {
   const authToken = localStorage.getItem('authToken');
-  console.log('🔑 Auth token:', authToken ? 'Present' : 'Missing');
-
   return {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -16,7 +14,6 @@ const getAuthHeaders = () => {
 // Generic API call function with better error handling
 const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   const url = `${API_BASE}${endpoint}`;
-  console.log(`📡 API Call: ${options.method || 'GET'} ${url}`);
 
   const response = await fetch(url, {
     ...options,
@@ -27,16 +24,12 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
     credentials: 'include'
   });
 
-  console.log(`📨 Response: ${response.status} ${response.statusText}`);
-
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ API Error:', errorText);
     throw new Error(`API Error ${response.status}: ${errorText || response.statusText}`);
   }
 
   const data = await response.json();
-  console.log('📦 Response data:', data);
 
   // Handle the API response format: { "success": true, "data": [...], "message": "..." }
   if (data.success && data.data !== undefined) {
@@ -51,98 +44,96 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
 
 // Roles
 export async function fetchRoles() {
-  console.log('🔄 Fetching roles...');
-  return await apiCall('/master/roles');
+  return await apiCall('/roles');
 }
 
 // Categories
 export async function fetchCategories() {
-  console.log('🔄 Fetching categories...');
   return await apiCall('/master/categories');
 }
 
-// Subcategories - FIXED to use correct endpoint with proper authentication
+// Subcategories
 export async function fetchSubcategories(categoryId?: string) {
   let endpoint;
   if (categoryId) {
-    // Use the correct endpoint with category filter
     endpoint = `/master/sub-categories?category_id=${categoryId}`;
-    console.log('🔄 Fetching subcategories for category:', categoryId);
   } else {
-    // Use general subcategories endpoint
     endpoint = '/master/sub-categories';
-    console.log('🔄 Fetching all subcategories...');
   }
 
   try {
     const result = await apiCall(endpoint);
-    console.log('✅ Subcategories loaded:', result.data);
     return result;
   } catch (error) {
-    console.error('❌ Error fetching subcategories:', error);
     throw error;
   }
 }
 
 // Contact Types
 export async function fetchContactTypes() {
-  console.log('🔄 Fetching contact types...');
   return await apiCall('/master/contact-types');
 }
 
 // Impacts
 export async function fetchImpacts() {
-  console.log('🔄 Fetching impacts...');
   return await apiCall('/master/impacts');
 }
 
 // Urgencies
 export async function fetchUrgencies() {
-  console.log('🔄 Fetching urgencies...');
   return await apiCall('/master/urgencies');
 }
 
 // Incident States
 export async function fetchIncidentStates() {
-  console.log('🔄 Fetching incident states...');
   return await apiCall('/master/incident-states');
 }
 
 // Assets
 export async function fetchAssets() {
-  console.log('🔄 Fetching assets...');
   return await apiCall('/master/assets');
 }
 
 // Sites
 export async function fetchSites() {
-  console.log('🔄 Fetching sites...');
-  return await apiCall('/master/sites');
+  const authToken = localStorage.getItem('authToken');
+  if (!authToken) {
+    throw new Error('Authentication required for sites. Please log in again.');
+  }
+
+  try {
+    const result = await apiCall('/master/sites');
+    return result;
+  } catch (error: any) {
+    if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+      throw new Error('Authentication failed for sites. Please refresh and log in again.');
+    }
+
+    if (error.message.includes('403') || error.message.includes('Forbidden')) {
+      throw new Error('Access denied for sites. Contact your administrator for permissions.');
+    }
+
+    throw error;
+  }
 }
 
-// Additional helper functions for action-related master data (when APIs become available)
+// Action Types
+export async function fetchActionTypes() {
+  return await apiCall('/master/action-types');
+}
 
-// Action Types - PLACEHOLDER (uncomment when API is ready)
-// export async function fetchActionTypes() {
-//   console.log('🔄 Fetching action types...');
-//   return await apiCall('/master/action-types');
-// }
+// Action Statuses
+export async function fetchActionStatuses() {
+  return await apiCall('/master/action-statuses');
+}
 
-// Action Statuses - PLACEHOLDER (uncomment when API is ready)
-// export async function fetchActionStatuses() {
-//   console.log('🔄 Fetching action statuses...');
-//   return await apiCall('/master/action-statuses');
-// }
-
-// Action Priorities - PLACEHOLDER (uncomment when API is ready)
-// export async function fetchActionPriorities() {
-//   console.log('🔄 Fetching action priorities...');
-//   return await apiCall('/master/action-priorities');
-// }
+// Action Priorities
+export async function fetchActionPriorities() {
+  return await apiCall('/master/action-priorities');
+}
 
 // Test authentication
 export async function testAuth() {
-  console.log('🔄 Testing authentication...');
   try {
     const response = await fetch(`${API_BASE}/test-auth`, {
       method: 'GET',
@@ -150,10 +141,25 @@ export async function testAuth() {
       credentials: 'include'
     });
 
-    console.log('🔑 Auth test response:', response.status);
     return response.ok;
   } catch (error) {
-    console.error('❌ Auth test failed:', error);
     return false;
   }
+}
+
+// Helper function to refresh auth token if needed
+export async function refreshAuthIfNeeded() {
+  const authToken = localStorage.getItem('authToken');
+
+  if (!authToken) {
+    return false;
+  }
+
+  const isValid = await testAuth();
+
+  if (!isValid) {
+    return false;
+  }
+
+  return true;
 }

@@ -186,8 +186,6 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({ userType, onBack, initialSt
 
       let fetchedIncidents: Incident[] = [];
 
-      console.log('🎯 AllIncidents: Fetching for user type:', actualUserType);
-
       // Use different data sources based on user type
       if (actualUserType.includes('expert')) {
         console.log('🎯 Fetching as EXPERT TEAM - using demo data (API not ready)');
@@ -203,39 +201,21 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({ userType, onBack, initialSt
           fetchedIncidents = await fetchManagerIncidents();
           console.log('✅ Manager incidents loaded:', fetchedIncidents.length);
         } catch (error: any) {
-          console.error('❌ Manager incidents fetch failed:', error);
           throw new Error(`Failed to load manager incidents: ${error.message}`);
         }
       } else if (actualUserType.includes('handler')) {
-        console.log('🎯 Fetching as HANDLER - using real API');
         try {
           fetchedIncidents = await fetchHandlerIncidents();
-          console.log('✅ Handler incidents loaded:', fetchedIncidents.length);
         } catch (error: any) {
-          console.error('❌ Handler incidents fetch failed:', error);
           throw new Error(`Failed to load handler incidents: ${error.message}`);
         }
       } else {
         console.log('🎯 Fetching as END USER - using real API');
         try {
           fetchedIncidents = await fetchEndUserIncidents();
-          console.log('✅ End user incidents loaded:', fetchedIncidents.length);
         } catch (error: any) {
-          console.error('❌ End user incidents fetch failed:', error);
           throw new Error(`Failed to load user incidents: ${error.message}`);
         }
-      }
-
-      console.log('✅ AllIncidents: Received', fetchedIncidents.length, 'incidents');
-
-      // Debug: Log assignment breakdown
-      if (fetchedIncidents.length > 0) {
-        const assignmentBreakdown = fetchedIncidents.reduce((acc, incident) => {
-          const assignee = getAssignedTo(incident);
-          acc[assignee] = (acc[assignee] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        console.log('👥 Assignment breakdown:', assignmentBreakdown);
       }
 
       // Sort incidents by creation date (latest first)
@@ -576,7 +556,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({ userType, onBack, initialSt
                               )}
                               <td>
                                 <div>
-                                  {/* SLA status placeholder */}
+                                  <small className="text-muted">Pending</small>
                                 </div>
                               </td>
                               <td>

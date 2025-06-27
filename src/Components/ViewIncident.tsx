@@ -4,8 +4,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter, Button, Row, Col, Badge, Na
 import {
   getStatusColor,
   getPriorityColor,
-  formatDate,
-  type Incident
+  formatDate
 } from '../app/(MainBody)/services/incidentService';
 import { getCurrentUser } from '../app/(MainBody)/services/userService';
 
@@ -18,6 +17,7 @@ interface ViewIncidentProps {
 const API_BASE = 'https://apexwpc.apextechno.co.uk/api';
 
 const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType }) => {
+  // ========== STATE MANAGEMENT ==========
   const [activeTab, setActiveTab] = useState('details');
   const [loading, setLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -32,10 +32,11 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
     sites: [] as Array<{id: number, name: string}>
   });
 
-  const [evidenceData, setEvidenceData] = useState<{
-    images: Array<{id: number, name: string, url: string, uploadedAt: string, size: string}>,
-    readings: Array<{id: number, type: string, reading: string, date: string, unit: string}>,
-    actions: Array<{
+  // Evidence data
+  const [evidenceData, setEvidenceData] = useState({
+    images: [] as Array<{id: number, name: string, url: string, uploadedAt: string, size: string}>,
+    readings: [] as Array<{id: number, type: string, reading: string, date: string, unit: string}>,
+    actions: [] as Array<{
       id: string,
       action_type_id: string,
       action_status_id: string,
@@ -45,13 +46,9 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
       complete: boolean,
       created_at: string
     }>
-  }>({
-    images: [],
-    readings: [],
-    actions: []
   });
 
-  // SLA Status state
+  // SLA status
   const [slaStatus, setSlaStatus] = useState({
     name: '',
     type: '',
@@ -63,13 +60,28 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
     percentage: 0
   });
 
-  // Get current user on component mount
-  useEffect(() => {
-    const user = getCurrentUser();
-    setCurrentUser(user);
-  }, []);
+  // History and audit trail
+  const [historyData, setHistoryData] = useState({
+    auditTrail: [] as Array<{
+      id: number,
+      field_name: string,
+      old_value: string,
+      new_value: string,
+      changed_by: string,
+      changed_at: string,
+      change_type: string
+    }>,
+    timeline: [] as Array<{
+      id: number,
+      action: string,
+      description: string,
+      performed_by: string,
+      performed_at: string,
+      details: any
+    }>
+  });
 
-  // Check if user has elevated permissions
+  // ========== PERMISSION HELPERS ==========
   const hasElevatedPermissions = () => {
     const currentUserType = userType?.toLowerCase() || '';
     return currentUserType.includes('handler') ||
@@ -81,59 +93,47 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
 
   const isHandler = hasElevatedPermissions();
 
-  // Load master data for display names
-  useEffect(() => {
-    const loadMasterData = async () => {
-      try {
-        const [
-          categoriesRes,
-          contactTypesRes,
-          urgenciesRes,
-          incidentStatesRes,
-          assetsRes,
-          sitesRes
-        ] = await Promise.all([
-          fetch(`${API_BASE}/master/categories`),
-          fetch(`${API_BASE}/master/contact-types`),
-          fetch(`${API_BASE}/master/urgencies`),
-          fetch(`${API_BASE}/master/incident-states`),
-          fetch(`${API_BASE}/master/assets`),
-          fetch(`${API_BASE}/master/sites`)
-        ]);
+  // ========== DATA LOADING FUNCTIONS ==========
+  const loadMasterData = async () => {
+    try {
+      const [
+        categoriesRes,
+        contactTypesRes,
+        urgenciesRes,
+        incidentStatesRes,
+        assetsRes,
+        sitesRes
+      ] = await Promise.all([
+        fetch(`${API_BASE}/master/categories`),
+        fetch(`${API_BASE}/master/contact-types`),
+        fetch(`${API_BASE}/master/urgencies`),
+        fetch(`${API_BASE}/master/incident-states`),
+        fetch(`${API_BASE}/master/assets`),
+        fetch(`${API_BASE}/master/sites`)
+      ]);
 
-        const [
-          categories,
-          contactTypes,
-          urgencies,
-          incidentStates,
-          assets,
-          sites
-        ] = await Promise.all([
-          categoriesRes.json(),
-          contactTypesRes.json(),
-          urgenciesRes.json(),
-          incidentStatesRes.json(),
-          assetsRes.json(),
-          sitesRes.json()
-        ]);
+      const [categories, contactTypes, urgencies, incidentStates, assets, sites] = await Promise.all([
+        categoriesRes.json(),
+        contactTypesRes.json(),
+        urgenciesRes.json(),
+        incidentStatesRes.json(),
+        assetsRes.json(),
+        sitesRes.json()
+      ]);
 
-        setMasterData({
-          categories: categories.data || [],
-          contactTypes: contactTypes.data || [],
-          urgencies: urgencies.data || [],
-          incidentStates: incidentStates.data || [],
-          assets: assets.data || [],
-          sites: sites.data || []
-        });
-      } catch (error) {
-        console.error('Error loading master data:', error);
-      }
-    };
+      setMasterData({
+        categories: categories.data || [],
+        contactTypes: contactTypes.data || [],
+        urgencies: urgencies.data || [],
+        incidentStates: incidentStates.data || [],
+        assets: assets.data || [],
+        sites: sites.data || []
+      });
+    } catch (error) {
+      // Silent fail for master data
+    }
+  };
 
-    loadMasterData();
-  }, []);
-
-  // Load SLA status from backend
   const loadSLAStatus = async () => {
     try {
       const incidentId = incident.id || incident.incident_id;
@@ -154,11 +154,10 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
         }
       }
     } catch (error) {
-      console.error('Error loading SLA status:', error);
+      // Silent fail for SLA status
     }
   };
 
-  // Load evidence data for handlers
   const loadEvidenceData = async () => {
     if (!isHandler) return;
 
@@ -168,7 +167,7 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
 
       // Load evidence photos
       try {
-        const photosRes = await fetch(`${API_BASE}/incident-handeler/evidence-photos/${incidentId}`);
+        const photosRes = await fetch(`${API_BASE}/incident-handler/evidence-photos/${incidentId}`);
         if (photosRes.ok) {
           const photosData = await photosRes.json();
           if (photosData.success && photosData.data) {
@@ -185,12 +184,12 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
           }
         }
       } catch (error) {
-        console.error('Error loading photos:', error);
+        // Silent fail for photos
       }
 
       // Load ammonia readings
       try {
-        const readingsRes = await fetch(`${API_BASE}/incident-handeler/ammonia-readings/${incidentId}`);
+        const readingsRes = await fetch(`${API_BASE}/incident-handler/ammonia-readings/${incidentId}`);
         if (readingsRes.ok) {
           const readingsData = await readingsRes.json();
           if (readingsData.success && readingsData.data) {
@@ -207,12 +206,12 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
           }
         }
       } catch (error) {
-        console.error('Error loading readings:', error);
+        // Silent fail for readings
       }
 
       // Load actions
       try {
-        const actionsRes = await fetch(`${API_BASE}/incident-handeler/actions/${incidentId}`);
+        const actionsRes = await fetch(`${API_BASE}/incident-handler/actions/${incidentId}`);
         if (actionsRes.ok) {
           const actionsData = await actionsRes.json();
           if (actionsData.success && actionsData.data) {
@@ -223,45 +222,108 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
           }
         }
       } catch (error) {
-        console.error('Error loading actions:', error);
+        // Silent fail for actions
       }
 
     } catch (error) {
-      console.error('Error loading evidence data:', error);
+      // Silent fail for evidence data
     } finally {
       setLoading(false);
     }
   };
 
-  // Load additional data on mount
+  const extractHistoryFromIncident = () => {
+    const auditTrail: any[] = [];
+    const timeline: any[] = [];
+
+    // Extract audit trail from incident data
+    if (incident.audit_trail && Array.isArray(incident.audit_trail)) {
+      auditTrail.push(...incident.audit_trail);
+    }
+
+    if (incident.changes && Array.isArray(incident.changes)) {
+      auditTrail.push(...incident.changes);
+    }
+
+    // Extract timeline from incident data
+    if (incident.history && Array.isArray(incident.history)) {
+      timeline.push(...incident.history);
+    }
+
+    if (incident.activities && Array.isArray(incident.activities)) {
+      timeline.push(...incident.activities);
+    }
+
+    // Create basic timeline entries from incident data
+    if (incident.created_at) {
+      timeline.push({
+        id: 0,
+        action: 'created',
+        description: 'Incident was created',
+        performed_by: incident.user?.name || 'System',
+        performed_at: incident.created_at,
+        details: null
+      });
+    }
+
+    if (incident.updated_at && incident.updated_at !== incident.created_at) {
+      timeline.push({
+        id: timeline.length,
+        action: 'updated',
+        description: 'Incident was updated',
+        performed_by: incident.updated_by?.name || 'System',
+        performed_at: incident.updated_at,
+        details: null
+      });
+    }
+
+    if (incident.assigned_to?.name) {
+      timeline.push({
+        id: timeline.length,
+        action: 'assigned',
+        description: `Assigned to ${incident.assigned_to.name}`,
+        performed_by: incident.assigned_by?.name || 'System',
+        performed_at: incident.assigned_at || incident.updated_at,
+        details: { assigned_to: incident.assigned_to.name }
+      });
+    }
+
+    // Sort by date (newest first)
+    timeline.sort((a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime());
+    auditTrail.sort((a, b) => new Date(b.changed_at || b.created_at).getTime() - new Date(a.changed_at || a.created_at).getTime());
+
+    setHistoryData({ auditTrail, timeline });
+  };
+
+  // ========== INITIALIZATION ==========
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+  }, []);
+
+  useEffect(() => {
+    loadMasterData();
+  }, []);
+
   useEffect(() => {
     const loadAdditionalData = async () => {
       await loadSLAStatus();
       await loadEvidenceData();
+      extractHistoryFromIncident();
     };
 
-    loadAdditionalData();
-  }, [incident.id, isHandler]);
-
-  const getStatusStepColor = (step: string) => {
-    const currentStatus = incident.status;
-    const steps = ['pending', 'in_progress', 'resolved', 'closed'];
-    const currentIndex = steps.indexOf(currentStatus);
-    const stepIndex = steps.indexOf(step);
-
-    if (stepIndex <= currentIndex) {
-      return '#28a745'; // Green for completed steps
+    if (incident.id || incident.incident_id) {
+      loadAdditionalData();
     }
-    return '#e9ecef'; // Gray for future steps
-  };
+  }, [incident, isHandler]);
 
+  // ========== UTILITY FUNCTIONS ==========
   const getSLAColor = () => {
     if (slaStatus.percentage >= 100) return 'danger';
     if (slaStatus.percentage >= 80) return 'warning';
     return 'success';
   };
 
-  // Helper functions to safely get values from incident data
   const getIncidentNumber = () => {
     return incident.number || incident.incident_no || 'N/A';
   };
@@ -383,23 +445,10 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
     return incident.createdAt || incident.created_at || 'Not specified';
   };
 
-  const getUpdatedAt = () => {
-    return incident.updatedAt || incident.updated_at || 'Not specified';
-  };
-
-  const getLatitude = () => {
-    return incident.latitude || incident.lat;
-  };
-
   const getLocation = () => {
     return incident.address;
   };
 
-  const getLongitude = () => {
-    return incident.longitude || incident.lng;
-  };
-
-  // Helper function to get action type name
   const getActionTypeName = (typeId: string) => {
     const types: { [key: string]: string } = {
       '1': 'Investigation',
@@ -412,7 +461,6 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
     return types[typeId] || 'Unknown';
   };
 
-  // Helper function to get action status name
   const getActionStatusName = (statusId: string) => {
     const statuses: { [key: string]: string } = {
       '1': 'Open',
@@ -424,7 +472,6 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
     return statuses[statusId] || 'Unknown';
   };
 
-  // Helper function to get action priority name
   const getActionPriorityName = (priorityId: string) => {
     const priorities: { [key: string]: string } = {
       '1': 'High',
@@ -434,13 +481,14 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
     return priorities[priorityId] || 'Unknown';
   };
 
+  // ========== MAIN RENDER ==========
   return (
     <Modal isOpen={true} toggle={onClose} size="xl" style={{ maxWidth: '95vw', width: '95vw' }}>
       <ModalHeader toggle={onClose}>
         Incident Details - {getIncidentNumber()}
       </ModalHeader>
-      <ModalBody style={{ maxHeight: '80vh', overflowY: 'auto' }}>
 
+      <ModalBody style={{ maxHeight: '80vh', overflowY: 'auto' }}>
         {/* Navigation Tabs for Handlers */}
         {isHandler && (
           <Nav tabs className="mb-4">
@@ -471,11 +519,20 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
                 Actions ({evidenceData.actions.length})
               </NavLink>
             </NavItem>
+            {/* <NavItem>
+              <NavLink
+                className={activeTab === 'history' ? 'active' : ''}
+                onClick={() => setActiveTab('history')}
+                style={{ cursor: 'pointer' }}
+              >
+                History ({historyData.auditTrail.length + historyData.timeline.length})
+              </NavLink>
+            </NavItem> */}
           </Nav>
         )}
 
         <TabContent activeTab={isHandler ? activeTab : 'details'}>
-          {/* Details Tab */}
+          {/* DETAILS TAB */}
           <TabPane tabId="details">
             <Row>
               <Col md={6}>
@@ -578,11 +635,27 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
                     {getLocation()}
                   </p>
                 </div>
+                <div className="mb-3">
+                  <strong>SLA Status:</strong>
+                  <div className="mt-2 p-3 bg-light rounded">
+                    <div className="d-flex justify-content-between align-items-center">
+                      <span className="text-dark">{slaStatus.name || 'Not specified'}</span>
+                      <div className="progress" style={{ width: '40%', height: '20px' }}>
+                        <div
+                          className={`progress-bar bg-${getSLAColor()}`}
+                          style={{ width: `${Math.min(slaStatus.percentage, 100)}%` }}
+                        >
+                          {slaStatus.percentage}%
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </Col>
             </Row>
           </TabPane>
 
-          {/* Evidence Tab - Only for Handlers */}
+          {/* EVIDENCE TAB */}
           {isHandler && (
             <TabPane tabId="evidence">
               <h5 className="text-dark mb-4">Evidence & Data</h5>
@@ -665,7 +738,7 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
                                   </Badge>
                                 </td>
                                 <td className="fw-medium">{reading.reading}</td>
-                                <td>{reading.unit || 'mg/L'}</td>
+                                <td>{reading.unit}</td>
                                 <td>{new Date(reading.date).toLocaleDateString()}</td>
                                 <td>
                                   <Badge color={parseFloat(reading.reading) > 1.5 ? 'danger' : 'success'}>
@@ -701,7 +774,7 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
             </TabPane>
           )}
 
-          {/* Actions Tab - Only for Handlers */}
+          {/* ACTIONS TAB */}
           {isHandler && (
             <TabPane tabId="actions">
               <h5 className="text-dark mb-4">Actions & Tasks</h5>
@@ -790,23 +863,159 @@ const ViewIncident: React.FC<ViewIncidentProps> = ({ incident, onClose, userType
               )}
             </TabPane>
           )}
+
+          {/* HISTORY TAB */}
+          {/* {isHandler && (
+            <TabPane tabId="history">
+              <h5 className="text-dark mb-4">Incident History & Changes</h5>
+
+              {/* Audit Trail Section */}
+              {/* {historyData.auditTrail.length > 0 && (
+                <div className="mb-4">
+                  <h6 className="text-dark">Field Changes ({historyData.auditTrail.length})</h6>
+                  <div className="table-responsive">
+                    <Table striped size="sm">
+                      <thead>
+                        <tr>
+                          <th>Date & Time</th>
+                          <th>Field</th>
+                          <th>Previous Value</th>
+                          <th>New Value</th>
+                          <th>Changed By</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historyData.auditTrail.map((change) => (
+                          <tr key={change.id}>
+                            <td>
+                              <small>{new Date(change.changed_at).toLocaleString()}</small>
+                            </td>
+                            <td>
+                              <Badge color="info" className="text-capitalize">
+                                {change.field_name.replace('_', ' ')}
+                              </Badge>
+                            </td>
+                            <td>
+                              <small className="text-muted">
+                                {change.old_value || 'Empty'}
+                              </small>
+                            </td>
+                            <td>
+                              <small className="text-dark fw-medium">
+                                {change.new_value || 'Empty'}
+                              </small>
+                            </td>
+                            <td>
+                              <small>{change.changed_by}</small>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                </div>
+              )}  */}
+
+              {/* Timeline Section */}
+              {/* {historyData.timeline.length > 0 && (
+                <div className="mb-4">
+                  <h6 className="text-dark">Activity Timeline ({historyData.timeline.length})</h6>
+                  <div className="timeline-container">
+                    {historyData.timeline.map((activity, index) => (
+                      <div key={activity.id} className="timeline-item mb-3">
+                        <div className="d-flex">
+                          <div className="timeline-marker me-3">
+                            <div className={`rounded-circle d-flex align-items-center justify-content-center ${
+                              activity.action === 'created' ? 'bg-success' :
+                              activity.action === 'updated' ? 'bg-warning' :
+                              activity.action === 'assigned' ? 'bg-info' :
+                              activity.action === 'status_changed' ? 'bg-primary' :
+                              activity.action === 'resolved' ? 'bg-success' :
+                              activity.action === 'closed' ? 'bg-secondary' : 'bg-light'
+                            } text-white`} style={{ width: '32px', height: '32px', fontSize: '12px' }}>
+                              {activity.action === 'created' && '+'}
+                              {activity.action === 'updated' && '✎'}
+                              {activity.action === 'assigned' && '👤'}
+                              {activity.action === 'status_changed' && '🔄'}
+                              {activity.action === 'resolved' && '✓'}
+                              {activity.action === 'closed' && '🔒'}
+                              {!['created', 'updated', 'assigned', 'status_changed', 'resolved', 'closed'].includes(activity.action) && '•'}
+                            </div>
+                          </div>
+                          <div className="timeline-content flex-grow-1">
+                            <div className="bg-light p-3 rounded">
+                              <div className="d-flex justify-content-between align-items-start mb-2">
+                                <h6 className="mb-0 text-capitalize">
+                                  {activity.action.replace('_', ' ')}
+                                </h6>
+                                <small className="text-muted">
+                                  {new Date(activity.performed_at).toLocaleString()}
+                                </small>
+                              </div>
+                              <p className="mb-2 text-dark">{activity.description}</p>
+                              <small className="text-muted">
+                                <strong>By:</strong> {activity.performed_by}
+                              </small>
+                            </div>
+                          </div>
+                        </div>
+                        {index < historyData.timeline.length - 1 && (
+                          <div className="timeline-line ms-3" style={{
+                            width: '2px',
+                            height: '20px',
+                            backgroundColor: '#dee2e6',
+                            marginLeft: '15px'
+                          }}></div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )} */}
+
+              {/* No History Message */}
+              {/* {historyData.auditTrail.length === 0 && historyData.timeline.length === 0 && (
+                <div className="text-center py-5">
+                  <div className="mb-3">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-muted">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                      <path d="M12 7v5l4 2"/>
+                    </svg>
+                  </div>
+                  <h6 className="text-muted">No History Available</h6>
+                  <p className="text-muted">
+                    No changes or activities have been recorded for this incident yet.
+                  </p>
+                </div>
+              )} */}
+            {/* </TabPane>
+          )} */}
         </TabContent>
+
+        {/* Summary Footer */}
+        {/* <div className="mt-4 p-3 bg-light rounded">
+          <Row>
+            <Col md={6}>
+              <small className="text-muted">
+                <strong>Last Updated:</strong> {formatDate(incident.updated_at || incident.created_at)}
+              </small>
+            </Col>
+            <Col md={6} className="text-end">
+              <small className="text-muted">
+                <strong>Changes:</strong> {historyData.auditTrail.length} •
+                <strong className="ms-2">Activities:</strong> {historyData.timeline.length}
+              </small>
+            </Col>
+          </Row>
+        </div> */}
       </ModalBody>
-      {/* <ModalFooter>
-        {isHandler ? (
-          <div className="d-flex w-100 justify-content-between align-items-center">
-            <div>
-              <Button color="secondary" onClick={onClose}>
-                Close
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <Button color="secondary" onClick={onClose}>
-            Close
-          </Button>
-        )}
-      </ModalFooter> */}
+
+      <ModalFooter>
+        <Button color="secondary" onClick={onClose}>
+          Close
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 };

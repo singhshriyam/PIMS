@@ -4,6 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, Button, Badge } from '
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import InteractiveIncidentMap from '../../../../Components/InteractiveIncidentMap';
+import RequestForm from '../../../../Components/RequestForm'
 
 import {
   fetchAllIncidents,
@@ -27,7 +28,7 @@ import AssignIncidents from '../../../../Components/AssignIncidents';
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
 // Define API base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 const IncidentManagerDashboard = () => {
   const router = useRouter();

@@ -1,4 +1,3 @@
-
 'use client'
 import React, { useState, useEffect } from 'react'
 import { Container, Row, Col, Card, CardBody, Button } from 'reactstrap'
@@ -21,6 +20,7 @@ import {
 // Import the unified AllIncidents component
 import AllIncidents from '../../../../Components/AllIncidents';
 import AssignIncidents from '../../../../Components/AssignIncidents';
+import RequestForm from '../../../../Components/RequestForm';
 
 // Dynamically import ApexCharts to avoid SSR issues
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
@@ -221,6 +221,15 @@ const IncidentHandlerDashboard = () => {
     clearUserData();
     router.replace('/auth/login');
   };
+
+  // Handle request form views
+  if (currentView === 'request-form') {
+    return <RequestForm userType="handler" onBack={handleBackToDashboard} initialView="form" />;
+  }
+
+  if (currentView === 'request-status') {
+    return <RequestForm userType="handler" onBack={handleBackToDashboard} initialView="status" />;
+  }
 
   // Render different views based on current view
   if (currentView === 'all-incidents') {

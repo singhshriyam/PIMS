@@ -61,7 +61,7 @@ export const getUserDashboard = (team: string): string => {
   if (teamLower.includes('incident') && teamLower.includes('handler')) return '/dashboard/incident_handler';
   if (teamLower.includes('field') && teamLower.includes('engineer')) return '/dashboard/field_engineer';
   if (teamLower.includes('expert') && teamLower.includes('team')) return '/dashboard/expert_team';
-  if (teamLower.includes('sla') && teamLower.includes('manager')) return '/dashboard/developer';
+  if (teamLower.includes('sla') && teamLower.includes('manager')) return '/dashboard/slamanager';
 
   return '/dashboard/enduser';
 };
@@ -115,13 +115,3 @@ export const getCurrentUser = () => {
   };
 };
 
-// Placeholder functions for admin dashboard
-export const fetchAllUsers = async () => {
-  // TODO: Implement user fetching from your API
-  return [];
-};
-
-export const getUserStats = () => {
-  // TODO: Implement user statistics
-  return { total: 0, active: 0, inactive: 0 };
-};

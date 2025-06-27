@@ -129,7 +129,7 @@ export const fetchHandlerIncidents = async (): Promise<Incident[]> => {
   const userId = getStoredUserId();
 
   // Send assigned_to_id in request body like in Postman
-  const response = await fetch(`${API_BASE_URL}/incident-handeler/incident-list`, {
+  const response = await fetch(`${API_BASE_URL}/incident-handler/incident-list`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -250,7 +250,7 @@ export const fetchAdminIncidents = async (): Promise<Incident[]> => {
   const token = getStoredToken();
   const userId = getStoredUserId();
 
-  const response = await fetch(`${API_BASE_URL}/admin/incident-list`, {
+  const response = await fetch(`${API_BASE_URL}/incident-manager/incident-list`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -274,7 +274,6 @@ export const fetchIncidentsByUserRole = async (userRole?: string): Promise<Incid
   const currentUser = getCurrentUser();
   const role = (userRole || currentUser?.team || '').toLowerCase();
 
-  console.log('🎯 Fetching incidents for role:', role);
 
   if (role.includes('admin')) {
     return await fetchAdminIncidents();
@@ -303,13 +302,9 @@ export const fetchAllIncidentsForAssignment = async (): Promise<Incident[]> => {
   const currentUser = getCurrentUser();
   const userRole = currentUser?.team?.toLowerCase() || '';
 
-  console.log('🎯 Fetching incidents for assignment...');
-  console.log('👤 User role:', userRole);
-
   try {
     // MANAGER/ADMIN: Get ALL incidents
     if (userRole.includes('manager') || userRole.includes('admin')) {
-      console.log('📋 Manager/Admin: Fetching ALL incidents');
 
       const response = await fetch(`${API_BASE_URL}/incident-manager/incident-list`, {
         method: 'POST',
@@ -324,7 +319,6 @@ export const fetchAllIncidentsForAssignment = async (): Promise<Incident[]> => {
       if (response.ok) {
         const result = await response.json();
         if (result.success && result.data) {
-          console.log(`✅ Manager: Found ${result.data.length} total incidents`);
           return result.data.map(transformIncident);
         }
       }
@@ -332,9 +326,8 @@ export const fetchAllIncidentsForAssignment = async (): Promise<Incident[]> => {
 
     // HANDLER: Get only their assigned incidents
     else if (userRole.includes('handler')) {
-      console.log('📋 Handler: Fetching assigned incidents only');
 
-      const response = await fetch(`${API_BASE_URL}/incident-handeler/incident-list`, {
+      const response = await fetch(`${API_BASE_URL}/incident-handler/incident-list`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -347,18 +340,57 @@ export const fetchAllIncidentsForAssignment = async (): Promise<Incident[]> => {
       if (response.ok) {
         const result = await response.json();
         if (result.success && result.data) {
-          console.log(`✅ Handler: Found ${result.data.length} assigned incidents`);
           return result.data.map(transformIncident);
         }
       }
     }
 
+    // // Engineer: Get only their assigned incidents
+    // else if (userRole.includes('engineer')) {
+
+    //   const response = await fetch(`${API_BASE_URL}/field-engineer/incident-list`, {
+    //     method: 'POST',
+    //     headers: {
+    //       'Content-Type': 'application/json',
+    //       'Authorization': `Bearer ${token}`,
+    //       'Accept': 'application/json'
+    //     },
+    //     body: JSON.stringify({ assigned_to_id: userId })
+    //   });
+
+    //   if (response.ok) {
+    //     const result = await response.json();
+    //     if (result.success && result.data) {
+    //       return result.data.map(transformIncident);
+    //     }
+    //   }
+    // }
+
+    // // Expert: Get only their assigned incidents
+    // else if (userRole.includes('expert')) {
+
+    //   const response = await fetch(`${API_BASE_URL}/expert-team/incident-list`, {
+    //     method: 'POST',
+    //     headers: {
+    //       'Content-Type': 'application/json',
+    //       'Authorization': `Bearer ${token}`,
+    //       'Accept': 'application/json'
+    //     },
+    //     body: JSON.stringify({ assigned_to_id: userId })
+    //   });
+
+    //   if (response.ok) {
+    //     const result = await response.json();
+    //     if (result.success && result.data) {
+    //       return result.data.map(transformIncident);
+    //     }
+    //   }
+    // }
+
     // If no role-specific endpoint worked, return empty
-    console.log('⚠️ No incidents found for role:', userRole);
     return [];
 
   } catch (error: any) {
-    console.error('❌ Error fetching incidents for assignment:', error);
     throw new Error(`Failed to fetch incidents: ${error.message}`);
   }
 };
@@ -406,7 +438,7 @@ export const getIncidentStats = (incidents: Incident[]) => {
 
 export const createIncident = async (incidentData: any): Promise<Incident> => {
   const token = getStoredToken();
-  const response = await fetch(`${API_BASE_URL}/incidents`, {
+  const response = await fetch(`${API_BASE_URL}/end-user/create-incident`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

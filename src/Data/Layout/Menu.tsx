@@ -117,92 +117,116 @@ const createMenuSection = (title: string, items: MenuItem[]): MenuItem => ({
   type: "section"
 });
 
+// AdminMenuList section for Menu.tsx
 const AdminMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
     createMenuItem("Admin", "/dashboard/admin")
   ]),
-  createMenuSection("Management", [
+  createMenuSection("User Management", [
     {
       title: "Groups",
       type: "submenu",
       children: [
-        createMenuItem("All Groups", "/dashboard/admin?tab=all-groups"),
-        createMenuItem("Create Group", "/dashboard/admin?tab=create-group")
+        createMenuItem("All Groups", "/dashboard/admin/all-groups"),
+        createMenuItem("Create Group", "/dashboard/admin/create-group")
+      ]
+    },
+    {
+      title: "Roles",
+      type: "submenu",
+      children: [
+        createMenuItem("All Roles", "/dashboard/admin/all-roles"),
+        createMenuItem("Create Role", "/dashboard/admin/create-role")
       ]
     },
     {
       title: "Users",
       type: "submenu",
       children: [
-        createMenuItem("All Users", "/dashboard/admin?tab=users")
+        createMenuItem("All Users", "/dashboard/admin/all-users")
       ]
     },
     {
-      title: "Roles & Permissions",
+      title: "Permissions",
       type: "submenu",
       children: [
-        createMenuItem("All Roles", "/dashboard/admin?tab=all-roles"),
-        createMenuItem("Create Roles", "/dashboard/admin?tab=create-roles"),
-        createMenuItem("All Permissions", "/dashboard/admin?tab=all-permissions"),
-        createMenuItem("Create Permission", "/dashboard/admin?tab=create-permission")
+        createMenuItem("All Permissions", "/dashboard/admin/all-permissions"),
+        createMenuItem("Create Permission", "/dashboard/admin/create-permission")
       ]
     }
   ]),
-  createMenuSection("Incidents", [
+  createMenuSection("Incident Management", [
     {
-      title: "Incidents",
+      title: "Incident Staff",
       type: "submenu",
       children: [
-        createMenuItem("All Incidents", "/dashboard/admin?view=all-incidents"),
-        createMenuItem("Create Incident", "/dashboard/admin?tab=create-incident"),
-        createMenuItem("Assign Incidents", "/dashboard/admin?view=assign-incidents"),
-        createMenuItem("Manager Registration", "/dashboard/admin?tab=create-manager"),
-        createMenuItem("Handler Registration", "/dashboard/admin?tab=create-handler")
+        createMenuItem("Manager Registration", "/dashboard/admin/create-manager"),
+        createMenuItem("Handler Registration", "/dashboard/admin/create-handler")
       ]
     }
   ]),
-  createMenuSection("Configuration", [
+  createMenuSection("Master Settings", [
     {
-      title: "Master Settings",
+      title: "Incident Settings",
       type: "submenu",
       children: [
-        createMenuItem("Category", "/dashboard/admin?tab=category"),
-        createMenuItem("Sub-Category", "/dashboard/admin?tab=subcategory"),
-        createMenuItem("Contact Type", "/dashboard/admin?tab=contact-type"),
-        createMenuItem("Incident State", "/dashboard/admin?tab=state"),
-        createMenuItem("Impact", "/dashboard/admin?tab=impact"),
-        createMenuItem("Urgency", "/dashboard/admin?tab=urgency")
+        createMenuItem("Categories", "/dashboard/admin/categories"),
+        createMenuItem("Sub-Categories", "/dashboard/admin/subcategories"),
+        createMenuItem("Contact Types", "/dashboard/admin/contact-types"),
+        createMenuItem("Incident States", "/dashboard/admin/states"),
+        createMenuItem("Impact Levels", "/dashboard/admin/impacts"),
+        createMenuItem("Urgency Levels", "/dashboard/admin/urgencies")
+      ]
+    }
+  ]),
+  createMenuSection("Asset Management", [
+    {
+      title: "Assets",
+      type: "submenu",
+      children: [
+        createMenuItem("All Assets", "/dashboard/admin/all-assets"),
+        createMenuItem("Asset States", "/dashboard/admin/asset-states"),
+        createMenuItem("Asset Sub States", "/dashboard/admin/asset-substates"),
+        createMenuItem("Asset Functions", "/dashboard/admin/asset-functions"),
+        createMenuItem("Asset Locations", "/dashboard/admin/asset-locations")
+      ]
+    }
+  ]),
+  createMenuSection("Organization", [
+    {
+      title: "Structure",
+      type: "submenu",
+      children: [
+        createMenuItem("Departments", "/dashboard/admin/departments"),
+        createMenuItem("Companies", "/dashboard/admin/companies")
       ]
     },
     {
-      title: "Asset Management",
+      title: "Inventory",
       type: "submenu",
       children: [
-        createMenuItem("Asset State", "/dashboard/admin?tab=asset-state"),
-        createMenuItem("Asset Sub State", "/dashboard/admin?tab=asset-substate"),
-        createMenuItem("Asset Function", "/dashboard/admin?tab=asset-function"),
-        createMenuItem("Asset Location", "/dashboard/admin?tab=asset-location"),
-        createMenuItem("Department", "/dashboard/admin?tab=department"),
-        createMenuItem("Company", "/dashboard/admin?tab=company"),
-        createMenuItem("Stock Room", "/dashboard/admin?tab=stock-room"),
-        createMenuItem("Aisle", "/dashboard/admin?tab=aisle"),
-        createMenuItem("Add Asset", "/dashboard/admin?tab=add-asset")
+        createMenuItem("Stock Rooms", "/dashboard/admin/stock-rooms"),
+        createMenuItem("Aisles", "/dashboard/admin/aisles")
       ]
-    },
+    }
+  ]),
+  createMenuSection("Site Management", [
     {
-      title: "Site Management",
+      title: "Sites",
       type: "submenu",
       children: [
-        createMenuItem("Site Type", "/dashboard/admin?tab=site-type"),
-        createMenuItem("Sites", "/dashboard/admin?tab=sites")
+        createMenuItem("All Sites", "/dashboard/admin/all-sites"),
+        createMenuItem("Site Types", "/dashboard/admin/site-types")
       ]
-    },
+    }
+  ]),
+  createMenuSection("SLA Management", [
     {
-      title: "SLA Management",
+      title: "SLA Configuration",
       type: "submenu",
       children: [
-        createMenuItem("SLA Definitions", "/dashboard/admin?tab=sla-definitions"),
-        createMenuItem("SLA Conditions", "/dashboard/admin?tab=ssla-conditions")
+        createMenuItem("SLA Definitions", "/dashboard/admin/sla-definitions"),
+        createMenuItem("SLA Conditions", "/dashboard/admin/sla-conditions")
       ]
     }
   ])
@@ -210,18 +234,22 @@ const AdminMenuList: MenuItem[] = [
 
 const IncidentManagerMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
-    createMenuItem("Manager", "/dashboard/incident_manager", "dashboard")
+    createMenuItem("Manager", "/dashboard/incident_manager")
   ]),
   createMenuSection("Incident Management", [
-    createMenuItem("All Incidents", "/dashboard/incident_manager?view=all-incidents", "alert-triangle"),
-    createMenuItem("Create Incident", "/dashboard?tab=create-incident", "plus-circle"),
-    createMenuItem("Assign Incidents", "/dashboard/incident_manager?view=assign-incidents", "user-check"),
-    createMenuItem("Pending EA approvals", "/dashboard?tab=pending-approval", "alert-triangle")
+    createMenuItem("All Incidents", "/dashboard/incident_manager?view=all-incidents"),
+    createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
+    createMenuItem("Assign Incidents", "/dashboard/incident_manager?view=assign-incidents"),
+    createMenuItem("Pending EA approvals", "/dashboard?tab=pending-approval")
   ]),
-  createMenuSection("SLA Management", [
-    createMenuItem("Define SLA", "/dashboard?tab=sla-define", "clock"),
-    createMenuItem("SLA Reports", "/dashboard?tab=sla-report", "bar-chart")
-  ])
+  createMenuSection("Requests", [
+    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
+  ]),
+  // createMenuSection("SLA Management", [
+  //   createMenuItem("Activate SLA", "/dashboard?tab=sla-define"),
+  //   createMenuItem("SLA Reports", "/dashboard?tab=sla-report")
+  // ])
 ];
 
 const IncidentHandlerMenuList: MenuItem[] = [
@@ -232,6 +260,10 @@ const IncidentHandlerMenuList: MenuItem[] = [
     createMenuItem("My Incidents", "/dashboard/incident_handler?view=all-incidents", "list"),
     createMenuItem("Create Incident", "/dashboard?tab=create-incident", "plus-circle"),
     createMenuItem("Assign to Others", "/dashboard/incident_handler?view=assign-incidents", "user-check")
+  ]),
+  createMenuSection("Requests", [
+    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
   ])
 ];
 
@@ -249,37 +281,45 @@ const FieldEngineerMenuList: MenuItem[] = [
 // NEW - Water Pollution Expert Menu
 const ExpertTeamMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
-    createMenuItem("Expert Team", "/dashboard/expert_team", "dashboard")
+    createMenuItem("Expert Team", "/dashboard/expert_team")
   ]),
   createMenuSection("My Tasks", [
-    createMenuItem("My Incidents", "/dashboard/expert_team?view=all-incidents", "list"),
-    createMenuItem("Create Incident", "/dashboard?tab=create-incident", "plus-circle"),
-    createMenuItem("Assign to Others", "/dashboard/expert_team?view=assign-incidents", "user-check")
+    createMenuItem("My Incidents", "/dashboard/expert_team?view=all-incidents"),
+    createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
+    createMenuItem("Assign to Others", "/dashboard/expert_team?view=assign-incidents")
+  ]),
+  createMenuSection("Requests", [
+    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
   ])
 ];
 
 const SLAManagerMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
-    createMenuItem("SLA Manager", "/dashboard/developer", "dashboard")
+    createMenuItem("SLA Manager", "/dashboard/slamanager")
   ]),
   createMenuSection("SLA Management", [
-    createMenuItem("All Incidents", "/dashboard?tab=all-incidents", "alert-triangle"),
-    createMenuItem("SLA Monitoring", "/dashboard?tab=sla-monitoring", "clock"),
-    createMenuItem("SLA Reports", "/dashboard?tab=sla-reports", "bar-chart")
+    createMenuItem("SLA Definitions", "/dashboard/slamanager/sla-definitions"),
+    createMenuItem("SLA Conditions", "/dashboard/slamanager/sla-conditions"),
+    createMenuItem("SLA Notifications", "/dashboard/slamanager/sla-notifications")
+  ]),
+  createMenuSection("Requests", [
+    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
   ])
 ];
 
 const EndUserMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
-    createMenuItem("My Dashboard", "/dashboard/enduser", "dashboard")
+    createMenuItem("My Dashboard", "/dashboard/enduser")
   ]),
   createMenuSection("Incidents", [
-    createMenuItem("Create Incident", "/dashboard?tab=create-incident", "plus-circle"),
-    createMenuItem("All Incidents", "/dashboard/enduser?view=all-incidents", "list")
+    createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
+    createMenuItem("All Incidents", "/dashboard/enduser?view=all-incidents")
   ]),
   createMenuSection("Support", [
-    createMenuItem("Help Center", "/dashboard?view=help", "help-circle"),
-    createMenuItem("Contact Support", "/dashboard?view=support", "mail")
+    createMenuItem("Help Center", "/dashboard?view=help"),
+    createMenuItem("Contact Support", "/dashboard?view=support")
   ])
 ];
 

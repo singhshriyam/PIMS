@@ -29,6 +29,7 @@ interface EditIncidentProps {
 const API_BASE = 'https://apexwpc.apextechno.co.uk/api';
 
 const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose, onSave }) => {
+  // ========== STATE MANAGEMENT ==========
   const [activeTab, setActiveTab] = useState('details');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,9 +46,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     incidentStates: [] as Array<{id: number, name: string}>,
     assets: [] as Array<{id: number, name: string}>,
     sites: [] as Array<{id: number, name: string}>,
-    actionTypes: [] as Array<{id: number, name: string}>,
-    actionStatuses: [] as Array<{id: number, name: string}>,
-    actionPriorities: [] as Array<{id: number, name: string}>,
     loading: false,
     error: null as string | null
   });
@@ -130,11 +128,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     percentage: 0
   });
 
-  useEffect(() => {
-    const user = getCurrentUser();
-    setCurrentUser(user);
-  }, []);
-
+  // ========== PERMISSION HELPERS ==========
   const hasAdvancedEditPermissions = () => {
     const currentUserType = userType?.toLowerCase() || '';
     return currentUserType.includes('handler') ||
@@ -144,15 +138,29 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
            currentUserType.includes('expert_team');
   };
 
-  // Load master data from backend
+  const shouldShowIncidentStatusFlow = () => {
+    const currentUserType = userType?.toLowerCase() || '';
+    return (currentUserType.includes('handler') ||
+            currentUserType.includes('manager') ||
+            currentUserType.includes('admin') ||
+            currentUserType.includes('expert_team')) &&
+           !currentUserType.includes('field_engineer');
+  };
+
+  // ========== DATA LOADING FUNCTIONS ==========
   const loadMasterData = async () => {
     setMasterData(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      console.log('🔄 Loading master data...');
-
-      // Load all master data in parallel
-      const [categoriesRes, contactTypesRes, impactsRes, urgenciesRes, incidentStatesRes, assetsRes, sitesRes] = await Promise.all([
+      const [
+        categoriesRes,
+        contactTypesRes,
+        impactsRes,
+        urgenciesRes,
+        incidentStatesRes,
+        assetsRes,
+        sitesRes
+      ] = await Promise.all([
         fetchCategories(),
         fetchContactTypes(),
         fetchImpacts(),
@@ -161,16 +169,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         fetchAssets(),
         fetchSites()
       ]);
-
-      console.log('✅ Master data loaded:', {
-        categories: categoriesRes.data?.length || 0,
-        contactTypes: contactTypesRes.data?.length || 0,
-        impacts: impactsRes.data?.length || 0,
-        urgencies: urgenciesRes.data?.length || 0,
-        incidentStates: incidentStatesRes.data?.length || 0,
-        assets: assetsRes.data?.length || 0,
-        sites: sitesRes.data?.length || 0
-      });
 
       setMasterData(prev => ({
         ...prev,
@@ -181,16 +179,11 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         incidentStates: incidentStatesRes.data || [],
         assets: assetsRes.data || [],
         sites: sitesRes.data || [],
-        // Initialize empty arrays for action-related data (to be implemented later)
-        actionTypes: [],
-        actionStatuses: [],
-        actionPriorities: [],
         loading: false,
         error: null
       }));
 
     } catch (error: any) {
-      console.error('❌ Error loading master data:', error);
       setMasterData(prev => ({
         ...prev,
         loading: false,
@@ -206,21 +199,16 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     }
 
     try {
-      console.log('🔄 Loading subcategories for category:', categoryId);
       const response = await fetchSubcategories(categoryId);
-      console.log('✅ Subcategories loaded:', response.data);
-
       setMasterData(prev => ({
         ...prev,
         subCategories: response.data || []
       }));
     } catch (error: any) {
-      console.error('❌ Error loading subcategories:', error);
       setMasterData(prev => ({ ...prev, subCategories: [] }));
     }
   };
 
-  // Load SLA status from backend
   const loadSLAStatus = async () => {
     try {
       const incidentId = incident.id;
@@ -241,11 +229,10 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         }
       }
     } catch (error) {
-      console.error('Error loading SLA status:', error);
+      // Silent fail for SLA status
     }
   };
 
-  // Load existing evidence and actions
   const loadExistingData = async () => {
     if (!hasAdvancedEditPermissions()) return;
 
@@ -254,7 +241,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
 
       // Load existing evidence photos
       try {
-        const photosRes = await fetch(`${API_BASE}/incident-handeler/evidence-photos/${incidentId}`);
+        const photosRes = await fetch(`${API_BASE}/incident-handler/evidence-photos/${incidentId}`);
         if (photosRes.ok) {
           const photosData = await photosRes.json();
           if (photosData.success && photosData.data) {
@@ -268,12 +255,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           }
         }
       } catch (error) {
-        console.error('Error loading photos:', error);
+        // Silent fail for photos
       }
 
       // Load existing ammonia readings
       try {
-        const readingsRes = await fetch(`${API_BASE}/incident-handeler/ammonia-readings/${incidentId}`);
+        const readingsRes = await fetch(`${API_BASE}/incident-handler/ammonia-readings/${incidentId}`);
         if (readingsRes.ok) {
           const readingsData = await readingsRes.json();
           if (readingsData.success && readingsData.data) {
@@ -287,12 +274,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           }
         }
       } catch (error) {
-        console.error('Error loading readings:', error);
+        // Silent fail for readings
       }
 
       // Load existing actions
       try {
-        const actionsRes = await fetch(`${API_BASE}/incident-handeler/actions/${incidentId}`);
+        const actionsRes = await fetch(`${API_BASE}/incident-handler/actions/${incidentId}`);
         if (actionsRes.ok) {
           const actionsData = await actionsRes.json();
           if (actionsData.success && actionsData.data) {
@@ -300,34 +287,45 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           }
         }
       } catch (error) {
-        console.error('Error loading actions:', error);
+        // Silent fail for actions
+      }
+
+      // Load similar incidents for knowledge base
+      try {
+        const similarRes = await fetch(`${API_BASE}/incident-handeler/similar-incidents/${incidentId}`);
+        if (similarRes.ok) {
+          const similarData = await similarRes.json();
+          if (similarData.success && similarData.data) {
+            setSimilarIncidents(similarData.data);
+          }
+        }
+      } catch (error) {
+        // Silent fail for similar incidents
       }
 
     } catch (error) {
-      console.error('Error loading existing data:', error);
+      // Silent fail for existing data
     }
   };
+
+  // ========== INITIALIZATION ==========
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+  }, []);
 
   useEffect(() => {
     const loadIncidentData = async () => {
       try {
         setLoading(true);
-        console.log('🔄 Loading incident data for:', incident);
 
         // Load master data first
         await loadMasterData();
 
         if (hasAdvancedEditPermissions()) {
-          // FIXED: Populate advanced form with ACTUAL incident data
+          // Populate advanced form with incident data
           const categoryId = incident.category_id?.toString() || incident.category?.id?.toString() || '';
           const subCategoryId = incident.subcategory_id?.toString() || incident.subcategory?.id?.toString() || '';
-
-          console.log('📝 Setting form data:', {
-            categoryId,
-            subCategoryId,
-            shortDescription: incident.short_description,
-            description: incident.description
-          });
 
           setAdvancedEditForm({
             shortDescription: incident.short_description || '',
@@ -363,7 +361,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         }
 
       } catch (error: any) {
-        console.error('❌ Error loading incident data:', error);
         setError('Failed to load incident data');
       } finally {
         setLoading(false);
@@ -373,8 +370,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     loadIncidentData();
   }, [incident]);
 
+  // ========== EVENT HANDLERS ==========
   const handleCategoryChange = async (categoryId: string) => {
-    console.log('🔄 Category changed to:', categoryId);
     setAdvancedEditForm(prev => ({
       ...prev,
       categoryId,
@@ -396,7 +393,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         formData.append('url', file);
         formData.append('incident_id', incident.id.toString());
 
-        const response = await fetch(`${API_BASE}/incident-handeler/evidence-photo`, {
+        const response = await fetch(`${API_BASE}/incident-handler/evidence-photo`, {
           method: 'POST',
           body: formData
         });
@@ -427,7 +424,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         }
       }
     } catch (error: any) {
-      console.error('Upload error:', error);
       setError(`Failed to upload images: ${error.message}`);
     } finally {
       setLoading(false);
@@ -436,7 +432,25 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
   };
 
   const handleImageDelete = async (id: number) => {
-    setError('Image delete functionality temporarily disabled');
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/incident-handler/evidence-photo/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setUploadedImages(prev => prev.filter(img => img.id !== id));
+        setSuccess('Image deleted successfully');
+      } else {
+        throw new Error('Failed to delete image');
+      }
+    } catch (error: any) {
+      setError(`Failed to delete image: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAmmoniaSubmit = async () => {
@@ -456,7 +470,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         reading: parseFloat(newAmmoniaReading.reading)
       };
 
-      const response = await fetch(`${API_BASE}/incident-handeler/ammonia-reading`, {
+      const response = await fetch(`${API_BASE}/incident-handler/ammonia-reading`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -490,7 +504,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         throw new Error(`Submission failed: ${response.status} - ${errorText}`);
       }
     } catch (error: any) {
-      console.error('Ammonia submission error:', error);
       setError(`Failed to submit ammonia reading: ${error.message}`);
     } finally {
       setLoading(false);
@@ -498,86 +511,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
   };
 
   const handleActionSubmit = async () => {
-    if (!newAction.actionType || !newAction.details) {
-      setError('Please fill in action type and details');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // UNCOMMENT WHEN ACTION API IS READY
-      // const requestBody = {
-      //   incident_id: parseInt(incident.id.toString()),
-      //   action_type_id: parseInt(newAction.actionType),
-      //   action_status_id: parseInt(newAction.actionStatus) || 1,
-      //   action_priority_id: parseInt(newAction.priority) || 1,
-      //   raised: newAction.raisedOn || new Date().toISOString().split('T')[0],
-      //   complete: newAction.isComplete ? 1 : 0,
-      //   detail: newAction.details,
-      //   created_by_id: parseInt(currentUser?.id || '1'),
-      //   updated_by_id: parseInt(currentUser?.id || '1')
-      // };
-
-      // console.log('Submitting action:', requestBody);
-
-      // const response = await fetch(`${API_BASE}/incident-handeler/action`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(requestBody)
-      // });
-
-      // if (response.ok) {
-      //   const responseText = await response.text();
-      //   let result;
-
-      //   try {
-      //     result = JSON.parse(responseText);
-      //   } catch {
-      //     result = { success: true };
-      //   }
-
-      //   console.log('Action submission result:', result);
-
-      //   const newActionRecord = {
-      //     id: result.action_id || Date.now().toString(),
-      //     action_type_id: newAction.actionType,
-      //     action_status_id: newAction.actionStatus || '1',
-      //     action_priority_id: newAction.priority || '1',
-      //     detail: newAction.details,
-      //     raised: newAction.raisedOn || new Date().toISOString().split('T')[0],
-      //     complete: newAction.isComplete,
-      //     created_at: new Date().toISOString()
-      //   };
-
-      //   setActions(prev => [...prev, newActionRecord]);
-      //   setNewAction({
-      //     actionType: '',
-      //     actionStatus: '',
-      //     priority: '',
-      //     raisedOn: '',
-      //     details: '',
-      //     isComplete: false
-      //   });
-      //   setSuccess('Action submitted successfully');
-      // } else {
-      //   const errorText = await response.text();
-      //   console.error('Action submission error response:', errorText);
-      //   throw new Error(`Submission failed: ${response.status} - ${errorText}`);
-      // }
-
-      // TEMPORARY - REMOVE WHEN API IS READY
-      setError('Action API is not yet integrated. Please uncomment the code above when /incident-handeler/action endpoint is ready.');
-
-    } catch (error: any) {
-      console.error('Action submission error:', error);
-      setError(`Failed to submit action: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
+    setError('Action functionality temporarily disabled - master data APIs not available');
+    return;
   };
 
   const handleSaveEdit = async () => {
@@ -621,11 +556,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         };
       }
 
-      console.log('📤 Sending update request:', updateData);
-
-      // FIXED: Added proper authentication headers
       const authToken = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE}/incident-handeler/edit-incident`, {
+      const response = await fetch(`${API_BASE}/incident-handler/edit-incident`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -635,12 +567,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         body: JSON.stringify(updateData)
       });
 
-      console.log('📨 Update response status:', response.status);
-
       if (response.ok) {
         const responseText = await response.text();
-        console.log('📨 Update response:', responseText);
-
         let result;
         try {
           result = JSON.parse(responseText);
@@ -658,12 +586,10 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         }
       } else {
         const errorText = await response.text();
-        console.log('❌ Update error response:', errorText);
         throw new Error(`Update request failed: ${response.status} - ${errorText}`);
       }
 
     } catch (error: any) {
-      console.error('❌ Error updating incident:', error);
       setError(error.message || 'Failed to update incident');
     } finally {
       setLoading(false);
@@ -675,13 +601,13 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     setSuccess(null);
   };
 
+  // ========== UTILITY FUNCTIONS ==========
   const getSLAColor = () => {
     if (slaStatus.percentage >= 100) return 'danger';
     if (slaStatus.percentage >= 80) return 'warning';
     return 'success';
   };
 
-  // Helper functions to get names from IDs
   const getCategoryName = (id: string) => {
     const category = masterData.categories.find(cat => cat.id === parseInt(id));
     return category?.name || '';
@@ -722,35 +648,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     return site?.name || '';
   };
 
-  // Action helper functions
-  const getActionTypeName = (id: string) => {
-    const actionType = masterData.actionTypes.find(type => type.id === parseInt(id));
-    return actionType?.name || `Type ${id}`;
-  };
-
-  const getActionStatusName = (id: string) => {
-    const actionStatus = masterData.actionStatuses.find(status => status.id === parseInt(id));
-    return actionStatus?.name || `Status ${id}`;
-  };
-
-  const getActionPriorityName = (id: string) => {
-    const actionPriority = masterData.actionPriorities.find(priority => priority.id === parseInt(id));
-    return actionPriority?.name || `Priority ${id}`;
-  };
-
-  const getActionStatusColor = (id: string) => {
-    // UNCOMMENT WHEN ACTION STATUS API IS READY - MAP BASED ON ACTUAL STATUS NAMES
-    // const actionStatus = masterData.actionStatuses.find(status => status.id === parseInt(id));
-    // if (actionStatus?.name?.toLowerCase().includes('completed')) return 'success';
-    // if (actionStatus?.name?.toLowerCase().includes('progress')) return 'warning';
-    // if (actionStatus?.name?.toLowerCase().includes('hold')) return 'secondary';
-    // return 'info';
-
-    // TEMPORARY - REMOVE WHEN API IS READY
-    return 'info';
-  };
-
-  // Show loading state while master data is loading
+  // ========== LOADING STATES ==========
   if (masterData.loading) {
     return (
       <Modal isOpen={true} toggle={onClose} size="xl" style={{ maxWidth: '95vw', width: '95vw' }}>
@@ -769,7 +667,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     );
   }
 
-  // Show error state if master data failed to load
   if (masterData.error) {
     return (
       <Modal isOpen={true} toggle={onClose} size="xl" style={{ maxWidth: '95vw', width: '95vw' }}>
@@ -790,6 +687,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     );
   }
 
+  // ========== MAIN RENDER ==========
   return (
     <Modal isOpen={true} toggle={onClose} size="xl" style={{ maxWidth: '95vw', width: '95vw' }}>
       <ModalHeader toggle={onClose}>
@@ -800,7 +698,9 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </div>
         )}
       </ModalHeader>
+
       <ModalBody style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+        {/* Error and Success Messages */}
         {error && (
           <Alert color="danger" toggle={clearMessages}>
             <strong>Error:</strong> {error}
@@ -812,7 +712,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </Alert>
         )}
 
-        {hasAdvancedEditPermissions() && (
+        {/* Incident Status Flow - Hidden for field engineers */}
+        {shouldShowIncidentStatusFlow() && (
           <div className="mb-4">
             <h6 className="text-dark mb-3">Incident State Flow</h6>
             <div className="d-flex w-100" style={{ height: '50px' }}>
@@ -875,6 +776,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </div>
         )}
 
+        {/* Navigation Tabs - Only for advanced users */}
         {hasAdvancedEditPermissions() ? (
           <Nav tabs className="mb-4">
             <NavItem>
@@ -916,7 +818,9 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </Nav>
         ) : null}
 
+        {/* Tab Content */}
         <TabContent activeTab={hasAdvancedEditPermissions() ? activeTab : 'details'}>
+          {/* DETAILS TAB */}
           <TabPane tabId="details">
             {hasAdvancedEditPermissions() ? (
               <>
@@ -1154,6 +1058,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
 
             <hr />
 
+            {/* SLA Status Section */}
             <div className="mb-3">
               <h6 className="text-dark">SLA Status</h6>
               <div className="p-3 bg-light rounded">
@@ -1204,10 +1109,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
             </div>
           </TabPane>
 
+          {/* EVIDENCE TAB */}
           {hasAdvancedEditPermissions() && (
             <TabPane tabId="evidence">
               <h5 className="text-dark mb-4">Evidence Collection</h5>
 
+              {/* Photo Upload Section */}
               <div className="mb-4">
                 <h6 className="text-dark">Upload Photos</h6>
                 <FormGroup>
@@ -1262,6 +1169,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
 
               <hr />
 
+              {/* Ammonia Reading Section */}
               <div className="mb-4">
                 <h6 className="text-dark">Ammonia Reading</h6>
                 <Row>
@@ -1343,9 +1251,15 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
             </TabPane>
           )}
 
+          {/* ACTIONS TAB */}
           {hasAdvancedEditPermissions() && (
             <TabPane tabId="action">
               <h5 className="text-dark mb-4">Action Management</h5>
+
+              <Alert color="warning">
+                <strong>Note:</strong> Action functionality is temporarily disabled until master data APIs are available.
+                Contact your system administrator for more information.
+              </Alert>
 
               <Form className="mb-4">
                 <Row>
@@ -1356,14 +1270,9 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                         type="select"
                         value={newAction.actionType}
                         onChange={(e) => setNewAction({...newAction, actionType: e.target.value})}
+                        disabled
                       >
-                        <option value="">Select Action Type</option>
-                        <option value="1">Investigation</option>
-                        <option value="2">Resolution</option>
-                        <option value="3">Follow-up</option>
-                        <option value="4">Escalation</option>
-                        <option value="5">Site Visit</option>
-                        <option value="6">Customer Contact</option>
+                        <option value="">Master data not available</option>
                       </Input>
                     </FormGroup>
                   </Col>
@@ -1374,13 +1283,9 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                         type="select"
                         value={newAction.actionStatus}
                         onChange={(e) => setNewAction({...newAction, actionStatus: e.target.value})}
+                        disabled
                       >
-                        <option value="">Select Status</option>
-                        <option value="1">Open</option>
-                        <option value="2">In Progress</option>
-                        <option value="3">Completed</option>
-                        <option value="4">Cancelled</option>
-                        <option value="5">On Hold</option>
+                        <option value="">Master data not available</option>
                       </Input>
                     </FormGroup>
                   </Col>
@@ -1394,11 +1299,9 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                         type="select"
                         value={newAction.priority}
                         onChange={(e) => setNewAction({...newAction, priority: e.target.value})}
+                        disabled
                       >
-                        <option value="">Select Priority</option>
-                        <option value="1">High</option>
-                        <option value="2">Medium</option>
-                        <option value="3">Low</option>
+                        <option value="">Master data not available</option>
                       </Input>
                     </FormGroup>
                   </Col>
@@ -1409,6 +1312,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                         type="date"
                         value={newAction.raisedOn}
                         onChange={(e) => setNewAction({...newAction, raisedOn: e.target.value})}
+                        disabled
                       />
                     </FormGroup>
                   </Col>
@@ -1419,9 +1323,10 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                   <Input
                     type="textarea"
                     rows="4"
-                    placeholder="Enter detailed action description..."
+                    placeholder="Action details..."
                     value={newAction.details}
                     onChange={(e) => setNewAction({...newAction, details: e.target.value})}
+                    disabled
                   />
                 </FormGroup>
 
@@ -1431,6 +1336,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                     id="isComplete"
                     checked={newAction.isComplete}
                     onChange={(e) => setNewAction({...newAction, isComplete: e.target.checked})}
+                    disabled
                   />
                   <Label check for="isComplete">Mark as Complete</Label>
                 </FormGroup>
@@ -1439,13 +1345,14 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                   <Button
                     color="primary"
                     onClick={handleActionSubmit}
-                    disabled={loading}
+                    disabled
                   >
-                    Add Action
+                    Add Action (Disabled)
                   </Button>
                 </div>
               </Form>
 
+              {/* Action History */}
               {actions.length > 0 && (
                 <>
                   <hr />
@@ -1467,20 +1374,15 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                         {actions.map((action) => (
                           <tr key={action.id}>
                             <td><small>{action.id}</small></td>
+                            <td>Type {action.action_type_id}</td>
                             <td>
-                              {getActionTypeName(action.action_type_id)}
-                            </td>
-                            <td>
-                              <Badge color={getActionStatusColor(action.action_status_id)}>
-                                {getActionStatusName(action.action_status_id)}
+                              <Badge color="info">
+                                Status {action.action_status_id}
                               </Badge>
                             </td>
                             <td>
-                              <Badge color={
-                                action.action_priority_id === '1' ? 'danger' :
-                                action.action_priority_id === '2' ? 'warning' : 'info'
-                              }>
-                                {getActionPriorityName(action.action_priority_id)}
+                              <Badge color="info">
+                                Priority {action.action_priority_id}
                               </Badge>
                             </td>
                             <td>
@@ -1504,6 +1406,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
             </TabPane>
           )}
 
+          {/* KNOWLEDGE BASE TAB */}
           {hasAdvancedEditPermissions() && (
             <TabPane tabId="knowledge">
               <h5 className="text-dark mb-4">Knowledge Base</h5>
@@ -1511,24 +1414,66 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
                 Similar resolved incidents that may help with this case.
               </p>
 
-              <div className="text-center py-5">
-                <div className="mb-3">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-muted">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14,2 14,8 20,8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                  </svg>
+              {similarIncidents.length > 0 ? (
+                <div className="table-responsive">
+                  <Table>
+                    <thead>
+                      <tr>
+                        <th>Incident No</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Status</th>
+                        <th>Resolution</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {similarIncidents.map((incident) => (
+                        <tr key={incident.id}>
+                          <td><small>{incident.incident_no}</small></td>
+                          <td>
+                            <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {incident.short_description}
+                            </div>
+                          </td>
+                          <td>{incident.category?.name || 'N/A'}</td>
+                          <td>
+                            <Badge color={getStatusColor(incident.status)}>
+                              {incident.status}
+                            </Badge>
+                          </td>
+                          <td>
+                            <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {incident.resolution || 'N/A'}
+                            </div>
+                          </td>
+                          <td><small>{formatDate(incident.created_at)}</small></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
                 </div>
-                <h6 className="text-muted">Knowledge Base Coming Soon</h6>
-                <p className="text-muted">
-                  Knowledge base functionality will be available once the API endpoint is ready.
-                </p>
-              </div>
+              ) : (
+                <div className="text-center py-5">
+                  <div className="mb-3">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-muted">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14,2 14,8 20,8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                  </div>
+                  <h6 className="text-muted">No Similar Incidents Found</h6>
+                  <p className="text-muted">
+                    No similar incidents available for reference at this time.
+                  </p>
+                </div>
+              )}
             </TabPane>
           )}
         </TabContent>
       </ModalBody>
+
       <ModalFooter>
         <Button
           color="primary"

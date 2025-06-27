@@ -82,6 +82,9 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [subcategoriesLoading, setSubcategoriesLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [loadingAddress, setLoadingAddress] = useState(false);
+  const [aiDescriptions, setAiDescriptions] = useState<string[]>([]);
 
   const [masterData, setMasterData] = useState({
     categories: [] as Array<{id: number, name: string}>,
@@ -90,7 +93,7 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
     impacts: [] as Array<{id: number, name: string}>,
     urgencies: [] as Array<{id: number, name: string}>,
     assets: [] as Array<{id: number, name: string}>,
-    sites: [] as Array<{id: number, name: string}>,
+    sites: [] as Array<{id: number, name?: string, premises?: string, catchment?: string}>,
     loading: false,
     error: null as string | null
   });
@@ -100,9 +103,9 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
       setMasterData(prev => ({ ...prev, loading: true, error: null }));
 
       try {
-        console.log('🔄 Loading master data for incident creation...');
+        console.log('Starting to load master data...');
 
-        const [categoriesRes, contactTypesRes, impactsRes, urgenciesRes, assetsRes, sitesRes] = await Promise.all([
+        const results = await Promise.allSettled([
           fetchCategories(),
           fetchContactTypes(),
           fetchImpacts(),
@@ -111,23 +114,40 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
           fetchSites()
         ]);
 
-        console.log('✅ Master data loaded:', {
-          categories: categoriesRes.data?.length || 0,
-          contactTypes: contactTypesRes.data?.length || 0,
-          impacts: impactsRes.data?.length || 0,
-          urgencies: urgenciesRes.data?.length || 0,
-          assets: assetsRes.data?.length || 0,
-          sites: sitesRes.data?.length || 0
+        console.log('All API results:', results);
+
+        const [categoriesRes, contactTypesRes, impactsRes, urgenciesRes, assetsRes, sitesRes] = results;
+
+        // Extract data from successful results
+        const categories = categoriesRes.status === 'fulfilled' ? categoriesRes.value.data || [] : [];
+        const contactTypes = contactTypesRes.status === 'fulfilled' ? contactTypesRes.value.data || [] : [];
+        const impacts = impactsRes.status === 'fulfilled' ? impactsRes.value.data || [] : [];
+        const urgencies = urgenciesRes.status === 'fulfilled' ? urgenciesRes.value.data || [] : [];
+        const assets = assetsRes.status === 'fulfilled' ? assetsRes.value.data || [] : [];
+        const sites = sitesRes.status === 'fulfilled' ? sitesRes.value.data || [] : [];
+
+        // Log any failures
+        if (sitesRes.status === 'rejected') {
+          console.error('Sites API failed:', sitesRes.reason);
+        }
+
+        console.log('Extracted data:', {
+          categories: categories.length,
+          contactTypes: contactTypes.length,
+          impacts: impacts.length,
+          urgencies: urgencies.length,
+          assets: assets.length,
+          sites: sites.length
         });
 
         setMasterData(prev => ({
           ...prev,
-          categories: categoriesRes.data || [],
-          contactTypes: contactTypesRes.data || [],
-          impacts: impactsRes.data || [],
-          urgencies: urgenciesRes.data || [],
-          assets: assetsRes.data || [],
-          sites: sitesRes.data || [],
+          categories,
+          contactTypes,
+          impacts,
+          urgencies,
+          assets,
+          sites,
           loading: false,
           error: null
         }));
@@ -135,13 +155,13 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
         // Set default values for required fields
         setFormData(prev => ({
           ...prev,
-          contact_type_id: contactTypesRes.data?.[0]?.id?.toString() || '',
-          impact_id: impactsRes.data?.[0]?.id?.toString() || '',
-          urgency_id: urgenciesRes.data?.[0]?.id?.toString() || ''
+          contact_type_id: contactTypes[0]?.id?.toString() || '',
+          impact_id: impacts[0]?.id?.toString() || '',
+          urgency_id: urgencies[0]?.id?.toString() || ''
         }));
 
       } catch (error: any) {
-        console.error('❌ Error loading master data:', error);
+        console.error('Master data loading error:', error);
         setMasterData(prev => ({
           ...prev,
           loading: false,
@@ -154,10 +174,7 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
   }, []);
 
   const loadSubcategories = async (categoryId: string) => {
-    console.log('🔄 loadSubcategories called with categoryId:', categoryId);
-
     if (!categoryId) {
-      console.log('❌ No categoryId provided, clearing subcategories');
       setMasterData(prev => ({ ...prev, subcategories: [] }));
       setFormData(prev => ({ ...prev, subcategory_id: '' }));
       return;
@@ -165,18 +182,12 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
 
     setSubcategoriesLoading(true);
     try {
-      console.log('📡 Calling fetchSubcategories API...');
       const subcategoriesRes = await fetchSubcategories(categoryId);
-      console.log('✅ Subcategories response:', subcategoriesRes);
-
       setMasterData(prev => ({
         ...prev,
         subcategories: subcategoriesRes.data || []
       }));
-
-      console.log('✅ Subcategories loaded successfully:', subcategoriesRes.data);
     } catch (error: any) {
-      console.error('❌ Error loading subcategories:', error);
       setMasterData(prev => ({ ...prev, subcategories: [] }));
       setError(`Failed to load subcategories: ${error.message}`);
     } finally {
@@ -184,19 +195,51 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
     }
   };
 
+  const lookupPostcode = async (postcode: string) => {
+    if (!postcode || postcode.length < 5) return;
+
+    setLoadingAddress(true);
+    try {
+      const response = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+      const data = await response.json();
+
+      if (data.status === 200 && data.result) {
+        const result = data.result;
+        const fullAddress = [result.admin_district, result.admin_county, result.country]
+          .filter(Boolean).join(', ');
+
+        const latitude = result.latitude ? result.latitude.toString() : '';
+        const longitude = result.longitude ? result.longitude.toString() : '';
+
+        setFormData(prev => ({
+          ...prev,
+          address: fullAddress,
+          latitude,
+          longitude
+        }));
+      }
+    } catch (error) {
+      console.error('Error looking up postcode:', error);
+    } finally {
+      setLoadingAddress(false);
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-
-    console.log('📝 Input changed:', { name, value });
 
     setFormData(prev => {
       const newData = { ...prev, [name]: value };
 
-      // FIXED: Handle category change properly
+      // Handle category change properly
       if (name === 'category_id') {
-        console.log('🔄 Category changed, clearing subcategory and loading new ones');
         newData.subcategory_id = ''; // Clear subcategory when category changes
         loadSubcategories(value); // Load new subcategories
+      }
+
+      // Handle postcode lookup
+      if (name === 'postcode' && value.length >= 5) {
+        setTimeout(() => lookupPostcode(value), 500);
       }
 
       return newData;
@@ -212,6 +255,52 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
     }
   };
 
+  const handleAIGeneration = async () => {
+    if (!formData.category_id || !formData.subcategory_id) {
+      setError('Please select both category and subcategory first');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+    setAiDescriptions([]);
+
+    try {
+      const categoryName = getCategoryName(formData.category_id);
+      const subcategoryName = getSubCategoryName(formData.subcategory_id);
+
+      const response = await fetch('/api/generate-description', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          category: categoryName,
+          subcategory: subcategoryName
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI service error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.descriptions && Array.isArray(result.descriptions)) {
+        setAiDescriptions(result.descriptions);
+      } else {
+        throw new Error('No descriptions received from AI service');
+      }
+
+    } catch (error) {
+      console.error('AI Generation Error:', error);
+      setError('Failed to generate descriptions. Please write manually.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
@@ -223,6 +312,12 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
     if (!formData.urgency_id) errors.urgency_id = 'Urgency is required';
     if (!formData.short_description.trim()) errors.short_description = 'Short description is required';
     if (!formData.description.trim()) errors.description = 'Detailed description is required';
+    if (!formData.postcode.trim()) {
+      errors.postcode = 'Postcode is required';
+    } else if (!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(formData.postcode.trim())) {
+      errors.postcode = 'Please enter a valid UK postcode';
+    }
+    if (!formData.address.trim()) errors.address = 'Address is required';
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -244,28 +339,37 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
       if (!currentUser?.id) throw new Error('User not authenticated');
 
       const incidentData = {
-        user_id: parseInt(currentUser.id, 10),
+        user_id: parseInt(currentUser.id),
         incidentstate_id: 1,
-        urgency_id: parseInt(formData.urgency_id, 10),
-        category_id: parseInt(formData.category_id, 10),
-        subcategory_id: parseInt(formData.subcategory_id, 10),
-        contact_type_id: parseInt(formData.contact_type_id, 10),
-        impact_id: parseInt(formData.impact_id, 10),
+        urgency_id: parseInt(formData.urgency_id),
+        category_id: parseInt(formData.category_id),
+        subcategory_id: parseInt(formData.subcategory_id),
+        contact_type_id: parseInt(formData.contact_type_id),
+        impact_id: parseInt(formData.impact_id),
         short_description: formData.short_description,
         description: formData.description,
-        address: formData.address || '',
-        postcode: formData.postcode || '',
-        lat: formData.latitude || null,
-        lng: formData.longitude || null,
-        asset_id: formData.asset_id ? parseInt(formData.asset_id, 10) : null,
-        site_id: formData.site_id ? parseInt(formData.site_id, 10) : null
+        address: formData.address,
+        postcode: formData.postcode,
+        lat: formData.latitude ? parseFloat(formData.latitude) : null,
+        lng: formData.longitude ? parseFloat(formData.longitude) : null,
+        asset_id: formData.asset_id ? parseInt(formData.asset_id) : null,
+        site_id: formData.site_id ? parseInt(formData.site_id) : null
       };
 
-      console.log('📤 Creating incident with data:', incidentData);
+      console.log('Creating incident with data:', incidentData);
+
+      // Validate required fields
+      if (!incidentData.user_id || isNaN(incidentData.user_id)) {
+        throw new Error('Invalid user ID');
+      }
+      if (!incidentData.category_id || isNaN(incidentData.category_id)) {
+        throw new Error('Invalid category ID');
+      }
+      if (!incidentData.subcategory_id || isNaN(incidentData.subcategory_id)) {
+        throw new Error('Invalid subcategory ID');
+      }
 
       const createdIncident = await createIncident(incidentData);
-
-      console.log('✅ Incident created successfully:', createdIncident);
 
       if (onIncidentCreated) {
         onIncidentCreated(createdIncident);
@@ -291,8 +395,9 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
         site_id: ''
       });
 
-      // Clear subcategories since category was reset
+      // Clear subcategories and AI descriptions since category was reset
       setMasterData(prev => ({ ...prev, subcategories: [] }));
+      setAiDescriptions([]);
 
       setTimeout(() => {
         setShowSuccess(false);
@@ -300,7 +405,7 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
       }, 3000);
 
     } catch (error: any) {
-      console.error('❌ Error creating incident:', error);
+      console.error('Error creating incident:', error);
       setError(error.message || 'Failed to create incident');
     } finally {
       setIsSubmitting(false);
@@ -308,23 +413,14 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
   };
 
   const getSubCategoryOptions = () => {
-    console.log('🔍 getSubCategoryOptions called');
-    console.log('🔍 All subcategories:', masterData.subcategories);
-    console.log('🔍 Selected category ID:', formData.category_id);
-
     if (!formData.category_id) {
-      console.log('🔍 No category selected, returning empty array');
       return [];
     }
 
-    const filtered = masterData.subcategories.filter(subcat => {
-      const categoryMatch = subcat.category_id === parseInt(formData.category_id);
-      console.log(`🔍 Subcategory "${subcat.name}" (category_id: ${subcat.category_id}) matches selected category ${formData.category_id}:`, categoryMatch);
-      return categoryMatch;
-    });
-
-    console.log('🔍 Filtered subcategories:', filtered);
-    return filtered;
+    const selectedCategoryId = parseInt(formData.category_id);
+    return masterData.subcategories.filter(subcat =>
+      subcat.category_id === selectedCategoryId
+    );
   };
 
   const getCategoryName = (id: string) => {
@@ -350,6 +446,16 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
   const getContactTypeName = (id: string) => {
     const contactType = masterData.contactTypes.find(ct => ct.id === parseInt(id));
     return contactType?.name || '';
+  };
+
+  const getAssetName = (id: string) => {
+    const asset = masterData.assets.find(asset => asset.id === parseInt(id));
+    return asset?.name || '';
+  };
+
+  const getSiteName = (id: string) => {
+    const site = masterData.sites.find(site => site.id === parseInt(id));
+    return site?.premises || site?.catchment || `Site ${id}` || '';
   };
 
   if (masterData.loading) {
@@ -599,7 +705,9 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
                   >
                     <option value="">Select Site (Optional)</option>
                     {masterData.sites.map(option => (
-                      <option key={option.id} value={option.id}>{option.name}</option>
+                      <option key={option.id} value={option.id}>
+                        {option.premises || option.catchment || `Site ${option.id}`}
+                      </option>
                     ))}
                   </Input>
                 </FormGroup>
@@ -609,7 +717,7 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
             <Row>
               <Col md={6}>
                 <FormGroup>
-                  <Label for="postcode">Postcode</Label>
+                  <Label for="postcode">Postcode *</Label>
                   <Input
                     type="text"
                     id="postcode"
@@ -617,20 +725,40 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
                     value={formData.postcode}
                     onChange={handleInputChange}
                     placeholder="e.g., SW1A 1AA"
+                    required
+                    invalid={!!validationErrors.postcode}
+                    style={{ textTransform: 'uppercase' }}
                   />
+                  {loadingAddress && (
+                    <small className="text-info">
+                      <i className="fa fa-spinner fa-spin me-1"></i>
+                      Looking up address...
+                    </small>
+                  )}
+                  {validationErrors.postcode && (
+                    <div className="invalid-feedback">{validationErrors.postcode}</div>
+                  )}
                 </FormGroup>
               </Col>
               <Col md={6}>
                 <FormGroup>
-                  <Label for="address">Address/Location</Label>
+                  <Label for="address">Address/Location *</Label>
                   <Input
                     type="text"
                     id="address"
                     name="address"
                     value={formData.address}
                     onChange={handleInputChange}
-                    placeholder="Enter address or location"
+                    placeholder="Address will be auto-filled from postcode"
+                    required
+                    invalid={!!validationErrors.address}
                   />
+                  <small className="text-muted d-block mt-1">
+                    Address will be auto-filled from postcode
+                  </small>
+                  {validationErrors.address && (
+                    <div className="invalid-feedback">{validationErrors.address}</div>
+                  )}
                 </FormGroup>
               </Col>
             </Row>
@@ -670,13 +798,80 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
                     name="description"
                     value={formData.description}
                     onChange={handleInputChange}
-                    placeholder="Provide detailed information about the incident"
+                    placeholder="Provide detailed information about the incident (or use AI generated options below)"
                     rows={4}
                     required
                     invalid={!!validationErrors.description}
                   />
                   {validationErrors.description && (
                     <div className="invalid-feedback">{validationErrors.description}</div>
+                  )}
+                </FormGroup>
+              </Col>
+            </Row>
+
+            <Row>
+              <Col md={12}>
+                <FormGroup>
+                  <div className="d-flex justify-content-center mb-3">
+                    <Button
+                      type="button"
+                      color="info"
+                      size="sm"
+                      onClick={handleAIGeneration}
+                      disabled={!formData.category_id || !formData.subcategory_id || isGenerating}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-1" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>🤖 Generate 3 Options</>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* AI Generated Options */}
+                  {aiDescriptions.length > 0 && (
+                    <div className="mb-3 p-3 border rounded bg-light">
+                      <small className="text-muted d-block mb-2">
+                        <strong>AI Generated Options:</strong> Click any option to use it as your description
+                      </small>
+                      {aiDescriptions.map((description, index) => (
+                        <div key={index} className="mb-2">
+                          <Button
+                            type="button"
+                            color="outline-primary"
+                            size="sm"
+                            className="w-100 text-start"
+                            style={{
+                              whiteSpace: 'normal',
+                              height: 'auto',
+                              padding: '8px 12px',
+                              fontSize: '0.9rem',
+                              lineHeight: '1.4'
+                            }}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, description: description }));
+                              setAiDescriptions([]); // Clear options after selection
+                            }}
+                          >
+                            <strong>Option {index + 1}:</strong> {description}
+                          </Button>
+                        </div>
+                      ))}
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          color="secondary"
+                          size="sm"
+                          onClick={() => setAiDescriptions([])}
+                        >
+                          Clear Options
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </FormGroup>
               </Col>
@@ -724,11 +919,29 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
               </div>
               <div className="modal-body">
                 <p>Are you sure you want to submit this incident?</p>
-                <div className="bg-light p-3 rounded">
-                  <strong>Category:</strong> {getCategoryName(formData.category_id)}<br/>
-                  <strong>Sub Category:</strong> {getSubCategoryName(formData.subcategory_id)}<br/>
-                  <strong>Contact Type:</strong> {getContactTypeName(formData.contact_type_id)}<br/>
-                  <strong>Description:</strong> {formData.short_description}
+                <div className="bg-light p-3 rounded text-dark">
+                  <div className="row">
+                    <div className="col-6">
+                      <strong>Category:</strong> {getCategoryName(formData.category_id)}<br/>
+                      <strong>Sub Category:</strong> {getSubCategoryName(formData.subcategory_id)}<br/>
+                      <strong>Contact Type:</strong> {getContactTypeName(formData.contact_type_id)}<br/>
+                    </div>
+                    <div className="col-6">
+                      <strong>Impact:</strong> {getImpactName(formData.impact_id)}<br/>
+                      <strong>Urgency:</strong> {getUrgencyName(formData.urgency_id)}<br/>
+                      <strong>Postcode:</strong> {formData.postcode}<br/>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <strong>Address:</strong> {formData.address}<br/>
+                    <strong>Short Description:</strong> {formData.short_description}
+                  </div>
+                  {(formData.asset_id || formData.site_id) && (
+                    <div className="mt-2">
+                      {formData.asset_id && <><strong>Asset:</strong> {getAssetName(formData.asset_id)}<br/></>}
+                      {formData.site_id && <><strong>Site:</strong> {getSiteName(formData.site_id)}</>}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="modal-footer">

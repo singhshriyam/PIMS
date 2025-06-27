@@ -20,7 +20,7 @@ import {
 
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
-const DeveloperDashboard = () => {
+const SLAManagerDashboard = () => {
   const router = useRouter();
 
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -87,7 +87,7 @@ const DeveloperDashboard = () => {
   const slaPerformanceOptions = {
     chart: {
       type: 'line' as const,
-      height: 350
+      height: 300
     },
     dataLabels: {
       enabled: false
@@ -95,12 +95,8 @@ const DeveloperDashboard = () => {
     stroke: {
       curve: 'smooth' as const
     },
-    title: {
-      text: 'SLA Performance Trends',
-      align: 'left' as const
-    },
     xaxis: {
-      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'],
+      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Nov', 'Dec'],
     },
     yaxis: {
       title: {
@@ -144,21 +140,21 @@ const DeveloperDashboard = () => {
 
   const slaBreachSeries = [45, 30, 15, 10];
 
-  const handleViewAllIncidents = () => {
-    router.push('/dashboard?tab=all-incidents');
-  };
+  // const handleManageSLADefinitions = () => {
+  //   router.push('/dashboard/slamanager/sla-definitions');
+  // };
 
-  const handleCreateSLA = () => {
-    router.push('/dashboard?tab=create-sla');
-  };
+  // const handleManageSLAConditions = () => {
+  //   router.push('/dashboard/slamanager/sla-conditions');
+  // };
 
-  const handleSLAReports = () => {
-    router.push('/dashboard?tab=sla-reports');
-  };
+  // const handleManageSLANotifications = () => {
+  //   router.push('/dashboard/slamanager/sla-notifications');
+  // };
 
   // Calculate SLA status for incidents
   const getSLAStatus = (incident: Incident) => {
-    const createdTime = new Date(incident.createdAt);
+    const createdTime = new Date(incident.created_at);
     const now = new Date();
     const hoursSinceCreated = (now.getTime() - createdTime.getTime()) / (1000 * 60 * 60);
 
@@ -211,6 +207,59 @@ const DeveloperDashboard = () => {
             </Card>
           </Col>
         </Row>
+
+        {/* SLA Overview Cards */}
+        <Row>
+          <Col lg={3} md={6}>
+            <Card className="mb-4">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <div className="ms-3">
+                    <h5 className="mb-1">{slaMetrics.responseTimeCompliance}%</h5>
+                    <p className="text-muted mb-0">Response</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col lg={3} md={6}>
+            <Card className="mb-4">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <div className="ms-3">
+                    <h5 className="mb-1">{slaMetrics.resolutionTimeCompliance}%</h5>
+                    <p className="text-muted mb-0">Resolution</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col lg={3} md={6}>
+            <Card className="mb-4">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <div className="ms-3">
+                    <h5 className="mb-1">{slaMetrics.slaBreaches}</h5>
+                    <p className="text-muted mb-0">SLA Breaches</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col lg={3} md={6}>
+            <Card className="mb-4">
+              <CardBody>
+                <div className="d-flex align-items-center">
+                  <div className="ms-3">
+                    <h5 className="mb-1">{slaMetrics.totalSLAs}</h5>
+                    <p className="text-muted mb-0">Total SLAs</p>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
+
         <Row>
           {/* SLA Performance Trends */}
           <Col lg={8}>
@@ -223,7 +272,7 @@ const DeveloperDashboard = () => {
                   options={slaPerformanceOptions}
                   series={slaPerformanceSeries}
                   type="line"
-                  height={350}
+                  height={300}
                 />
               </CardBody>
             </Card>
@@ -246,99 +295,9 @@ const DeveloperDashboard = () => {
             </Card>
           </Col>
         </Row>
-
-        {/* Recent SLA Events */}
-        <Row>
-          <Col lg={12}>
-            <Card>
-              <CardHeader className="pb-0">
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5>🚨 Recent SLA Events & Incidents</h5>
-                  <Button color="outline-success" size="sm" onClick={handleViewAllIncidents}>
-                    View All Incidents
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardBody>
-                {incidents.length > 0 ? (
-                  <div className="table-responsive">
-                    <table className="table table-hover">
-                      <thead className="table-light">
-                        <tr>
-                          <th>Incident #</th>
-                          <th>Description</th>
-                          <th>Priority</th>
-                          <th>Status</th>
-                          <th>SLA Status</th>
-                          <th>Time to Response</th>
-                          <th>Created</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {incidents.slice(0, 5).map((incident) => {
-                          const slaStatus = getSLAStatus(incident);
-                          return (
-                            <tr key={incident.id}>
-                              <td>
-                                <span className="fw-medium text-success">{incident.number}</span>
-                              </td>
-                              <td>
-                                <div>
-                                  <div className="fw-medium">{incident.shortDescription}</div>
-                                  <small className="text-muted">{incident.category}</small>
-                                </div>
-                              </td>
-                              <td>
-                                <Badge style={{ backgroundColor: getPriorityColor(incident.priority), color: 'white' }}>
-                                  {incident.priority}
-                                </Badge>
-                              </td>
-                              <td>
-                                <Badge style={{ backgroundColor: getStatusColor(incident.status || 'pending'), color: 'white' }}>
-                                  {(incident.status || 'pending').replace('_', ' ')}
-                                </Badge>
-                              </td>
-                              <td>
-                                <Badge color={slaStatus === 'Within SLA' ? 'success' : 'danger'}>
-                                  {slaStatus}
-                                </Badge>
-                              </td>
-                              <td>
-                                <span className="text-muted">
-                                  {Math.floor(Math.random() * 4) + 1}h {Math.floor(Math.random() * 60)}m
-                                </span>
-                              </td>
-                              <td>{formatDate(incident.createdAt)}</td>
-                              <td>
-                                <Button color="outline-success" size="sm">
-                                  Review SLA
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-5">
-                    <div className="mb-3">
-                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-muted">
-                        <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
-                      </svg>
-                    </div>
-                    <h6 className="text-muted">No recent SLA events</h6>
-                    <p className="text-muted">All service levels are being met according to agreements.</p>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
       </Container>
     </>
   )
 }
 
-export default DeveloperDashboard
+export default SLAManagerDashboard
