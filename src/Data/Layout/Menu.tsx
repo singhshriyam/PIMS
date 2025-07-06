@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { getStoredUserTeam, mapTeamToRole, isAuthenticated } from "../../app/(MainBody)/services/userService";
 
 // User role type definition - UPDATED to include Field Engineer
-export type UserRole = 'ADMINISTRATOR' | 'INCIDENT_MANAGER' | 'INCIDENT_HANDLER' | 'FIELD_ENGINEER' | 'expert_team' | 'USER' | 'SLA_MANAGER';
+export type UserRole = 'ADMINISTRATOR' | 'INCIDENT_MANAGER' | 'INCIDENT_HANDLER' | 'FIELD_ENGINEER' | 'EXPERT_TEAM' | 'USER' | 'SLA_MANAGER';
 
 export interface User {
   id?: string;
@@ -73,7 +73,7 @@ export const RoleUtils = {
       'INCIDENT_MANAGER': '/dashboard/incident_manager',
       'INCIDENT_HANDLER': '/dashboard/incident_handler',
       'FIELD_ENGINEER': '/dashboard/field_engineer',
-      'expert_team': '/dashboard/expert_team',
+      'EXPERT_TEAM': '/dashboard/expert_team',
       'SLA_MANAGER': '/dashboard/slamanager',
       'USER': '/dashboard/enduser'
     };
@@ -95,7 +95,7 @@ export const RoleUtils = {
       'INCIDENT_MANAGER': 'Incident Manager',
       'INCIDENT_HANDLER': 'Incident Handler',
       'FIELD_ENGINEER': 'Field Engineer',
-      'expert_team': 'Water Pollution Expert',
+      'EXPERT_TEAM': 'Water Pollution Expert',
       'SLA_MANAGER': 'SLA Manager',
       'USER': 'End User'
     };
@@ -267,18 +267,16 @@ const IncidentHandlerMenuList: MenuItem[] = [
   ])
 ];
 
-// NEW - Field Engineer Menu
+//Field Engineer Menu
 const FieldEngineerMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
-    createMenuItem("Field Engineer", "/dashboard/field_engineer", "map-pin")
-  ]),
-  // createMenuSection("Field Work", [
-  //   createMenuItem("My Assignments", "/dashboard/field_engineer?view=all-incidents", "clipboard-list"),
-  //   createMenuItem("Site Inspections", "/dashboard/field_engineer", "search")
-  // ])
+    createMenuItem("Field Engineer", "/dashboard/field_engineer"),
+    createMenuItem("Assign Incidents", "/dashboard/field_engineer?view=assign-incidents")
+
+  ])
 ];
 
-// NEW - Water Pollution Expert Menu
+//Expert Menu
 const ExpertTeamMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
     createMenuItem("Expert Team", "/dashboard/expert_team")
@@ -301,12 +299,13 @@ const SLAManagerMenuList: MenuItem[] = [
   createMenuSection("SLA Management", [
     createMenuItem("SLA Definitions", "/dashboard/slamanager/sla-definitions"),
     createMenuItem("SLA Conditions", "/dashboard/slamanager/sla-conditions"),
+    createMenuItem("SLA Groups", "/dashboard/slamanager/sla-groups"),
     createMenuItem("SLA Notifications", "/dashboard/slamanager/sla-notifications")
   ]),
-  createMenuSection("Requests", [
-    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  ])
+  // createMenuSection("Requests", [
+  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
+  // ])
 ];
 
 const EndUserMenuList: MenuItem[] = [
@@ -337,7 +336,7 @@ export const getMenuByRole = (userRole: UserRole): MenuItem[] => {
     'INCIDENT_MANAGER': IncidentManagerMenuList,
     'INCIDENT_HANDLER': IncidentHandlerMenuList,
     'FIELD_ENGINEER': FieldEngineerMenuList,
-    'expert_team': ExpertTeamMenuList,
+    'EXPERT_TEAM': ExpertTeamMenuList,
     'SLA_MANAGER': SLAManagerMenuList,
     'USER': EndUserMenuList
   };

@@ -1,298 +1,219 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Container, Row, Col, Card, CardBody, CardHeader, Button, Input, Badge, Dropdown, DropdownToggle, DropdownMenu, DropdownItem } from 'reactstrap'
-import { useRouter } from 'next/navigation'
+import {
+  Container,
+  Row,
+  Col,
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Input,
+  Badge,
+  Alert,
+  Label
+} from 'reactstrap'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   getCurrentUser,
-  isAuthenticated,
-  clearUserData
-} from '../../services/userService';
-
+  isAuthenticated
+} from '../../services/userService'
 import {
-  // fetchFieldEngineerIncidents, // TODO: Implement this endpoint
+  fetchFieldEngineerIncidents,
   getIncidentStats,
   getStatusColor,
   getPriorityColor,
   type Incident
-} from '../../services/incidentService';
-
-import EditIncident from '../../../../Components/EditIncident';
-import ViewIncident from '../../../../Components/ViewIncident';
+} from '../../services/incidentService'
+import EditIncident from '../../../../Components/EditIncident'
+import AssignIncidents from '../../../../Components/AssignIncidents'
 
 const FieldEngineerDashboard = () => {
-  const router = useRouter();
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const view = searchParams?.get('view')
 
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [filteredIncidents, setFilteredIncidents] = useState<Incident[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
+  // State
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [filteredIncidents, setFilteredIncidents] = useState<Incident[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [editingIncident, setEditingIncident] = useState<Incident | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 10
 
-  // Filters
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  // Helper functions
+  const getIncidentNumber = (incident: Incident) => {
+    return incident.incident_no || `INC-${incident.id}`
+  }
 
-  // Modals
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [editingIncident, setEditingIncident] = useState<Incident | null>(null);
-  const [showViewModal, setShowViewModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-
-  // Dropdown states for actions
-  const [dropdownOpen, setDropdownOpen] = useState<{[key: string]: boolean}>({});
-
-  const toggleDropdown = (incidentId: string) => {
-    setDropdownOpen(prev => ({
-      ...prev,
-      [incidentId]: !prev[incidentId]
-    }));
-  };
-
-  // Helper function to safely get status - uses the transform function logic
-  const getStatus = (incident: Incident): 'pending' | 'in_progress' | 'resolved' | 'closed' => {
-    if (incident.status) return incident.status;
-    const state = incident.incidentstate?.name?.toLowerCase() || '';
-    if (state === 'new') return 'pending';
-    if (state === 'inprogress') return 'in_progress';
-    if (state === 'resolved') return 'resolved';
-    if (state === 'closed') return 'closed';
-    return 'pending';
-  };
-
-  // Helper function to safely get category name
   const getCategoryName = (incident: Incident) => {
-    if (incident.category?.name) return incident.category.name;
-    return 'Uncategorized';
-  };
+    return incident.category?.name || 'Uncategorized'
+  }
 
-  // Helper function to safely get priority name
   const getPriorityName = (incident: Incident) => {
-    if (incident.priority?.name) return incident.priority.name;
-    return incident.urgency?.name || 'Medium';
-  };
+    return incident.priority?.name || incident.urgency?.name || 'Medium'
+  }
 
-  // Helper function to safely get caller name
   const getCallerName = (incident: Incident) => {
+    if (!incident.user) return 'Unknown User'
     const fullName = incident.user.last_name
       ? `${incident.user.name} ${incident.user.last_name}`
-      : incident.user.name;
-    return fullName;
-  };
+      : incident.user.name
+    return fullName || 'Unknown User'
+  }
 
-  // Helper function to safely get incident number
-  const getIncidentNumber = (incident: Incident) => {
-    return incident.incident_no;
-  };
+  const getStatus = (incident: Incident) => {
+    if (incident.incidentstate && typeof incident.incidentstate === 'string') {
+      return incident.incidentstate
+    }
+    const state = incident.incidentstate?.name?.toLowerCase() || ''
+    if (state === 'new') return 'pending'
+    if (state === 'inprogress') return 'in_progress'
+    if (state === 'resolved') return 'resolved'
+    if (state === 'closed') return 'closed'
+    return 'pending'
+  }
 
-  // Helper function to safely get created date
-  const getCreatedAt = (incident: Incident) => {
-    return incident.created_at;
-  };
-
-  // Helper function to get address
-  const getAddress = (incident: Incident) => {
-    return incident.address || 'Not specified';
-  };
-
-  // Helper function to get short description
   const getShortDescription = (incident: Incident) => {
-    return incident.short_description || 'No description';
-  };
+    return incident.short_description || 'No description'
+  }
 
-  // Fetch field engineer incidents
+  const getAddress = (incident: Incident) => {
+    return incident.address || 'Not specified'
+  }
+
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString()
+    } catch {
+      return 'Unknown'
+    }
+  }
+
+  // Data fetching
   const fetchData = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
 
-      const currentUser = getCurrentUser();
-      if (!currentUser) {
-        router.replace('/auth/login');
-        return;
+      const currentUser = getCurrentUser()
+      if (!currentUser?.id) {
+        router.replace('/auth/login')
+        return
       }
 
-      setUser({
-        name: currentUser?.name || 'Field Engineer',
-        team: currentUser?.team || 'Field Engineer',
-        email: currentUser?.email || '',
-        userId: currentUser?.id || ''
-      });
+      setUser(currentUser)
 
-      // TODO: Implement fetchFieldEngineerIncidents() endpoint
-      // const fieldIncidents = await fetchFieldEngineerIncidents();
+      const fieldIncidents = await fetchFieldEngineerIncidents()
+      fieldIncidents.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
 
-      // Temporary: Use fake data until endpoint is ready
-      // FAKE DATA FOR DEMO - DELETE THIS WHEN REAL API IS READY
-      const fieldIncidents: Incident[] = [
-        {
-          id: 'demo-1',
-          incident_no: 'FE-2024-001',
-          status: 'in_progress',
-          category: { name: 'Electrical Safety' },
-          priority: 'High', // Fixed: String instead of object
-          user: { name: 'John', last_name: 'Smith' },
-          created_at: '2024-01-15T10:30:00Z',
-          address: '123 Industrial Park, Building A',
-          assigned_to: { name: 'Current', last_name: 'User' },
-          incidentstate: { name: 'inprogress' },
-          urgency: { name: 'High' },
-          short_description: 'Electrical panel overheating in main building'
-        },
-        {
-          id: 'demo-2',
-          incident_no: 'FE-2024-002',
-          status: 'pending',
-          category: { name: 'Equipment Failure' },
-          priority: 'Medium', // Fixed: String instead of object
-          user: { name: 'Sarah', last_name: 'Johnson' },
-          created_at: '2024-01-16T14:20:00Z',
-          address: '456 Factory Road, Unit 12',
-          assigned_to: { name: 'Current', last_name: 'User' },
-          incidentstate: { name: 'new' },
-          urgency: { name: 'Medium' },
-          short_description: 'Conveyor belt motor making unusual noises'
-        }
-      ];
-
-      // Sort incidents by creation date (latest first)
-      fieldIncidents.sort((a, b) => new Date(getCreatedAt(b)).getTime() - new Date(getCreatedAt(a)).getTime());
-
-      setIncidents(fieldIncidents);
-      setFilteredIncidents(fieldIncidents);
-      setCurrentPage(1);
+      setIncidents(fieldIncidents)
+      setFilteredIncidents(fieldIncidents)
+      setCurrentPage(1)
+      setLoading(false)
 
     } catch (error: any) {
-      console.error('❌ Fetch field engineer incidents error:', error);
-      setError(error.message || 'Failed to load field assignments');
-    } finally {
-      setLoading(false);
+      console.error('Field Engineer Dashboard error:', error)
+      setError(error.message || 'Failed to load assignments')
+      setLoading(false)
     }
-  };
+  }
 
+  // Event handlers
+  const handleEditIncident = (incident: Incident) => {
+    setEditingIncident(incident)
+    setShowEditModal(true)
+  }
+
+  const handleCloseEdit = () => {
+    setEditingIncident(null)
+    setShowEditModal(false)
+    fetchData()
+  }
+
+  const handleRefresh = () => {
+    fetchData()
+  }
+
+  // Effects
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace('/auth/login');
-      return;
+      router.replace('/auth/login')
+      return
     }
-    fetchData();
-  }, [router]);
+    fetchData()
+  }, [router])
 
-  // Filter incidents
   useEffect(() => {
-    let filtered = [...incidents];
+    let filtered = [...incidents]
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(incident => {
-        const incidentStatus = getStatus(incident);
-        return incidentStatus === statusFilter;
-      });
+      filtered = filtered.filter(incident => getStatus(incident) === statusFilter)
     }
 
     if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+      const term = searchTerm.toLowerCase()
       filtered = filtered.filter(incident =>
         getShortDescription(incident).toLowerCase().includes(term) ||
         getIncidentNumber(incident).toLowerCase().includes(term) ||
         getCategoryName(incident).toLowerCase().includes(term) ||
-        getCallerName(incident).toLowerCase().includes(term) ||
         getAddress(incident).toLowerCase().includes(term)
-      );
+      )
     }
 
-    setFilteredIncidents(filtered);
-    setCurrentPage(1);
-  }, [incidents, statusFilter, searchTerm]);
+    setFilteredIncidents(filtered)
+    setCurrentPage(1)
+  }, [incidents, statusFilter, searchTerm])
 
-  // Pagination
-  const totalPages = Math.ceil(filteredIncidents.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentIncidents = filteredIncidents.slice(startIndex, startIndex + itemsPerPage);
+  // Route handling
+  if (view === 'assign-incidents') {
+    return (
+      <AssignIncidents
+        userType="field_engineer"
+        onBack={() => router.push('/dashboard/field_engineer')}
+      />
+    )
+  }
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
+  // Loading state
+  if (loading) {
+    return (
+      <Container fluid>
+        <div className="text-center py-5">
+          <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }}>
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <h5 className="text-muted">Loading Field Assignments</h5>
+        </div>
+      </Container>
+    )
+  }
 
-  const handleViewIncident = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setShowViewModal(true);
-  };
+  // Error state
+  if (error) {
+    return (
+      <Container fluid>
+        <Alert color="danger" className="mt-3">
+          <strong>Error:</strong> {error}
+          <div className="mt-2">
+            <Button color="primary" onClick={handleRefresh}>
+              Try again
+            </Button>
+          </div>
+        </Alert>
+      </Container>
+    )
+  }
 
-  const handleEditIncident = (incident: Incident) => {
-    setEditingIncident(incident);
-    setShowEditModal(true);
-  };
-
-  const handleCloseEdit = () => {
-    setEditingIncident(null);
-    setShowEditModal(false);
-    // Refresh data after edit
-    fetchData();
-  };
-
-  const handleCloseView = () => {
-    setShowViewModal(false);
-    setSelectedIncident(null);
-  };
-
-  const formatDateOnly = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString();
-    } catch (error) {
-      return 'Unknown';
-    }
-  };
-
-  const handleRefreshData = async () => {
-    await fetchData();
-  };
-
-  const handleLogout = () => {
-    clearUserData();
-    router.replace('/auth/login');
-  };
-
-  // Get statistics
-  const stats = getIncidentStats(filteredIncidents);
-
-  // Pagination buttons
-  const renderPaginationButtons = () => {
-    const buttons = [];
-    const maxVisibleButtons = 5;
-    let startPage = Math.max(1, currentPage - Math.floor(maxVisibleButtons / 2));
-    let endPage = Math.min(totalPages, startPage + maxVisibleButtons - 1);
-
-    if (endPage - startPage + 1 < maxVisibleButtons) {
-      startPage = Math.max(1, endPage - maxVisibleButtons + 1);
-    }
-
-    if (currentPage > 1) {
-      buttons.push(
-        <Button key="prev" color="outline-primary" size="sm" onClick={() => handlePageChange(currentPage - 1)} className="me-1">‹</Button>
-      );
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
-      buttons.push(
-        <Button key={i} color={i === currentPage ? "primary" : "outline-primary"} size="sm" onClick={() => handlePageChange(i)} className="me-1">
-          {i}
-        </Button>
-      );
-    }
-
-    if (currentPage < totalPages) {
-      buttons.push(
-        <Button key="next" color="outline-primary" size="sm" onClick={() => handlePageChange(currentPage + 1)} className="me-1">›</Button>
-      );
-    }
-
-    return buttons;
-  };
-
-  // If editing incident, show edit component
+  // Edit modal
   if (editingIncident && showEditModal) {
     return (
       <EditIncident
@@ -301,294 +222,234 @@ const FieldEngineerDashboard = () => {
         onClose={handleCloseEdit}
         onSave={handleCloseEdit}
       />
-    );
+    )
   }
 
-  if (loading) {
-    return (
-      <Container fluid>
-        <div className="text-center py-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading your field assignments...</span>
-          </div>
-          <p className="mt-3 text-muted">Loading your field assignments...</p>
-        </div>
-      </Container>
-    );
-  }
+  // Pagination
+  const totalPages = Math.ceil(filteredIncidents.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const currentIncidents = filteredIncidents.slice(startIndex, startIndex + itemsPerPage)
+  const stats = getIncidentStats(filteredIncidents)
 
-  if (error) {
-    return (
-      <Container fluid>
-        <div className="alert alert-danger mt-3">
-          <strong>Error:</strong> {error}
-          <div className="mt-2">
-            <Button color="primary" onClick={handleRefreshData} className="me-2">
-              Try again
-            </Button>
-          </div>
-        </div>
-      </Container>
-    );
-  }
-
+  // Main render
   return (
-    <>
-      <Container fluid>
-        {/* Welcome Header */}
-        <Row>
-          <Col xs={12}>
-            <Card className="mb-4 mt-4">
-              <CardBody>
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h4 className="mb-1">Welcome back, {user?.name}!</h4>
-                    <small className="text-muted">Field Engineer Dashboard - Site Inspections & Evidence Collection</small>
-                  </div>
-                  <div>
-                    <Button color="outline-primary" size="sm" onClick={handleRefreshData}>
-                      🔄 Refresh
-                    </Button>
-                  </div>
+    <Container fluid>
+      {/* Header */}
+      <Row>
+        <Col xs={12}>
+          <Card className="mb-4 mt-4">
+            <CardBody>
+              <div className="d-flex justify-content-between align-items-center">
+                <div>
+                  <h4 className="mb-1">Welcome back, {user?.first_name || 'Field Engineer'}!</h4>
+                  <small className="text-muted">
+                    Field Engineer Dashboard (User ID: {user?.id})
+                  </small>
                 </div>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
+                <div className="d-flex gap-2">
+                  <Button color="outline-primary" size="sm" onClick={handleRefresh}>
+                    🔄 Refresh
+                  </Button>
+                  <Button
+                    color="primary"
+                    size="sm"
+                    onClick={() => router.push('/dashboard/field_engineer?view=assign-incidents')}
+                  >
+                    📋 Assign Incidents
+                  </Button>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
 
-        {/* Statistics Cards */}
-        <Row>
-          <Col xl={3} md={6} className="box-col-6 mt-3">
+      {/* Stats */}
+      <Row>
+        {[
+          { value: stats.total, label: 'Total Assignments' },
+          { value: stats.inProgress, label: 'In Progress' },
+          { value: stats.resolved, label: 'Completed' },
+          { value: stats.pending, label: 'Pending' }
+        ].map((stat, index) => (
+          <Col xl={3} md={6} key={index}>
             <Card className="o-hidden">
-              <CardBody className="b-r-4 card-body">
-                <div className="media static-top-widget">
-                  <div className="align-self-center text-center">
-                    <div className="d-inline-block">
-                      <h5 className="mb-0 counter">{stats.total}</h5>
-                      <span className="f-light">Total Field Assignments</span>
-                    </div>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-          <Col xl={3} md={6} className="box-col-6 mt-3">
-            <Card className="o-hidden">
-              <CardBody className="b-r-4 card-body">
-                <div className="media static-top-widget">
-                  <div className="align-self-center text-center">
-                    <div className="d-inline-block">
-                      <h5 className="mb-0 counter">{stats.inProgress}</h5>
-                      <span className="f-light">In Progress</span>
-                    </div>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-          <Col xl={3} md={6} className="box-col-6 mt-3">
-            <Card className="o-hidden">
-              <CardBody className="b-r-4 card-body">
-                <div className="media static-top-widget">
-                  <div className="align-self-center text-center">
-                    <div className="d-inline-block">
-                      <h5 className="mb-0 counter">{stats.resolved}</h5>
-                      <span className="f-light">Completed</span>
-                    </div>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-          <Col xl={3} md={6} className="box-col-6 mt-3">
-            <Card className="o-hidden">
-              <CardBody className="b-r-4 card-body">
-                <div className="media static-top-widget">
-                  <div className="align-self-center text-center">
-                    <div className="d-inline-block">
-                      <h5 className="mb-0 counter">{stats.pending}</h5>
-                      <span className="f-light">Pending</span>
-                    </div>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Filters */}
-        <Row>
-          <Col xs={12}>
-            <Card>
-              <CardHeader>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5>Filter Field Assignments</h5>
-                  <Button color="outline-primary" size="sm" onClick={handleRefreshData}>🔄 Refresh</Button>
-                </div>
-              </CardHeader>
               <CardBody>
-                <Row>
-                  <Col md={6}>
-                    <label>Search</label>
-                    <Input
-                      type="text"
-                      placeholder="Search by number, caller, description, location..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </Col>
-                  <Col md={6}>
-                    <label>Status</label>
-                    <Input type="select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                      <option value="all">All Statuses</option>
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="closed">Closed</option>
-                    </Input>
-                  </Col>
-                </Row>
+                <div className="text-center">
+                  <h5 className="mb-0">{stat.value}</h5>
+                  <span className="text-muted">{stat.label}</span>
+                </div>
               </CardBody>
             </Card>
           </Col>
-        </Row>
+        ))}
+      </Row>
 
-        {/* Field Assignments Table */}
-        <Row>
-          <Col xs={12}>
-            <Card>
-              <CardHeader>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5>
-                    My Field Assignments ({filteredIncidents.length})
-                  </h5>
-                  <div>
-                    <small className="text-muted">
-                      Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredIncidents.length)} of {filteredIncidents.length}
-                    </small>
-                  </div>
+      {/* Filters */}
+      <Row>
+        <Col xs={12}>
+          <Card>
+            <CardHeader>
+              <h5>Filter Assignments</h5>
+            </CardHeader>
+            <CardBody>
+              <Row>
+                <Col md={6}>
+                  <Label>Search</Label>
+                  <Input
+                    type="text"
+                    placeholder="Search assignments..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </Col>
+                <Col md={6}>
+                  <Label>Status</Label>
+                  <Input
+                    type="select"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </Input>
+                </Col>
+              </Row>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Table */}
+      <Row>
+        <Col xs={12}>
+          <Card>
+            <CardHeader>
+              <div className="d-flex justify-content-between align-items-center">
+                <h5>🔧 My Field Assignments ({filteredIncidents.length})</h5>
+                <small className="text-muted">Page {currentPage} of {totalPages}</small>
+              </div>
+            </CardHeader>
+            <CardBody>
+              {filteredIncidents.length === 0 ? (
+                <div className="text-center py-4">
+                  <h6 className="text-muted">No assignments found</h6>
+                  <Button color="primary" onClick={handleRefresh}>Refresh</Button>
                 </div>
-              </CardHeader>
-              <CardBody>
-                {filteredIncidents.length === 0 ? (
-                  <div className="text-center py-4">
-                    <div className="mb-3">
-                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-muted">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14,2 14,8 20,8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
-                        <polyline points="10,9 9,9 8,9"/>
-                      </svg>
-                    </div>
-                    <h6 className="text-muted">No field assignments found</h6>
-                    <p className="text-muted">No assignments match your current filters. Try adjusting your search criteria.</p>
-                    <Button color="primary" onClick={handleRefreshData}>Refresh Data</Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="table-responsive">
-                      <table className="table table-hover">
-                        <thead>
-                          <tr>
-                            <th>Incident</th>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th>Priority</th>
-                            <th>Status</th>
-                            <th>Location</th>
-                            <th>Date</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {currentIncidents.map((incident) => (
-                            <tr key={incident.id}>
-                              <td>
+              ) : (
+                <>
+                  <div className="table-responsive">
+                    <table className="table table-hover">
+                      <thead>
+                        <tr>
+                          <th>Incident</th>
+                          <th>Description</th>
+                          <th>Category</th>
+                          <th>Priority</th>
+                          <th>Status</th>
+                          <th>Location</th>
+                          <th>Date</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentIncidents.map((incident) => (
+                          <tr key={incident.id}>
+                            <td>
+                              <div>
+                                <span className="fw-medium text-primary">
+                                  {getIncidentNumber(incident)}
+                                </span>
                                 <div>
-                                  <span className="fw-medium text-primary">{getIncidentNumber(incident)}</span>
-                                  <div><small className="text-muted">Caller: {getCallerName(incident)}</small></div>
+                                  <small className="text-muted">
+                                    {getCallerName(incident)}
+                                  </small>
                                 </div>
-                              </td>
-                              <td>
-                                <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {getShortDescription(incident)}
-                                </div>
-                              </td>
-                              <td>
-                                <div className="fw-medium text-dark">{getCategoryName(incident)}</div>
-                              </td>
-                              <td>
-                                <Badge style={{ backgroundColor: getPriorityColor(getPriorityName(incident)), color: 'white' }}>
-                                  {getPriorityName(incident)}
-                                </Badge>
-                              </td>
-                              <td>
-                                <Badge style={{ backgroundColor: getStatusColor(getStatus(incident)), color: 'white' }}>
-                                  {getStatus(incident).replace('_', ' ')}
-                                </Badge>
-                              </td>
-                              <td>
-                                <small className="text-muted">{getAddress(incident)}</small>
-                              </td>
-                              <td>
-                                <small className="text-dark">{formatDateOnly(getCreatedAt(incident))}</small>
-                              </td>
-                              <td>
-                                {/* Field Engineer specific dropdown */}
-                                <Dropdown
-                                  isOpen={dropdownOpen[incident.id.toString()] || false}
-                                  toggle={() => toggleDropdown(incident.id.toString())}
-                                >
-                                  <DropdownToggle tag="button" className="btn btn-link p-1 border-0 bg-transparent text-dark">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-dark">
-                                      <circle cx="12" cy="12" r="1"/>
-                                      <circle cx="12" cy="5" r="1"/>
-                                      <circle cx="12" cy="19" r="1"/>
-                                    </svg>
-                                  </DropdownToggle>
-                                  <DropdownMenu>
-                                    <DropdownItem onClick={() => handleViewIncident(incident)}>
-                                      View
-                                    </DropdownItem>
-                                    <DropdownItem onClick={() => handleEditIncident(incident)}>
-                                      Edit
-                                    </DropdownItem>
-                                  </DropdownMenu>
-                                </Dropdown>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ maxWidth: '200px' }}>
+                                {getShortDescription(incident)}
+                              </div>
+                            </td>
+                            <td>{getCategoryName(incident)}</td>
+                            <td>
+                              <Badge
+                                style={{
+                                  backgroundColor: getPriorityColor(getPriorityName(incident)),
+                                  color: 'white'
+                                }}
+                              >
+                                {getPriorityName(incident)}
+                              </Badge>
+                            </td>
+                            <td>
+                              <Badge
+                                style={{
+                                  backgroundColor: getStatusColor(getStatus(incident)),
+                                  color: 'white'
+                                }}
+                              >
+                                {getStatus(incident).replace('_', ' ')}
+                              </Badge>
+                            </td>
+                            <td>
+                              <small className="text-muted">{getAddress(incident)}</small>
+                            </td>
+                            <td>
+                              <small>{formatDate(incident.created_at)}</small>
+                            </td>
+                            <td>
+                              <Button
+                                color="warning"
+                                size="sm"
+                                onClick={() => handleEditIncident(incident)}
+                              >
+                                Update
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                    {totalPages > 1 && (
-                      <div className="d-flex justify-content-between align-items-center mt-3">
-                        <div>
-                          <small className="text-muted">Page {currentPage} of {totalPages}</small>
-                        </div>
-                        <div>{renderPaginationButtons()}</div>
+                  {totalPages > 1 && (
+                    <div className="d-flex justify-content-center mt-3">
+                      <div className="btn-group">
+                        <Button
+                          color="outline-primary"
+                          size="sm"
+                          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                          disabled={currentPage === 1}
+                        >
+                          Previous
+                        </Button>
+                        <Button color="primary" size="sm" disabled>
+                          {currentPage} of {totalPages}
+                        </Button>
+                        <Button
+                          color="outline-primary"
+                          size="sm"
+                          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                          disabled={currentPage === totalPages}
+                        >
+                          Next
+                        </Button>
                       </div>
-                    )}
-                  </>
-                )}
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-      </Container>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
 
-      {/* View Incident Modal */}
-      {showViewModal && selectedIncident && (
-        <ViewIncident
-          incident={selectedIncident}
-          onClose={handleCloseView}
-          userType="field_engineer"
-        />
-      )}
-
-      {/* Edit Incident Modal */}
+      {/* Edit Modal */}
       {showEditModal && editingIncident && (
         <EditIncident
           incident={editingIncident}
@@ -597,7 +458,7 @@ const FieldEngineerDashboard = () => {
           onSave={handleCloseEdit}
         />
       )}
-    </>
+    </Container>
   )
 }
 

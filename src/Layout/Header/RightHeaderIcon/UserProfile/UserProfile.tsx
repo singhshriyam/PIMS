@@ -1,6 +1,6 @@
 import { Href, ImagePath } from "@/Constant";
 import { userProfileData } from "@/Data/Layout/Header";
-import { getCurrentUser, clearUserData } from "../../../../app/(MainBody)/services/userService";
+import { getCurrentUser, clearUserData, User } from "../../../../app/(MainBody)/services/userService";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -27,7 +27,7 @@ const UserProfile = () => {
         />
         <div className='flex-grow-1'>
           <span>{user.email || 'user@example.com'}</span>
-          <p className='mb-0'>{user.name || 'User'}</p>
+          <p className='mb-0'>{user.first_name || 'User'}</p>
         </div>
       </div>
       <ul className='profile-dropdown onhover-show-div'>

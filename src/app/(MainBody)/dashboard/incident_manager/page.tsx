@@ -1,610 +1,337 @@
 'use client'
-import React, { useState, useEffect } from 'react'
-import { Container, Row, Col, Card, CardBody, CardHeader, Button, Badge } from 'reactstrap'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Container, Row, Col, Card, CardBody, CardHeader, Button, Badge, Spinner } from 'reactstrap'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import InteractiveIncidentMap from '../../../../Components/InteractiveIncidentMap';
-import RequestForm from '../../../../Components/RequestForm'
 
+// Components
+import InteractiveIncidentMap from '../../../../Components/InteractiveIncidentMap'
+import RequestForm from '../../../../Components/RequestForm'
+import MyRequests from '../../../../Components/MyRequests'
+import AllIncidents from '../../../../Components/AllIncidents'
+import AssignIncidents from '../../../../Components/AssignIncidents'
+
+// Services
 import {
-  fetchAllIncidents,
-  fetchEndUserIncidents,
-  fetchHandlerIncidents,
+  fetchManagerIncidents,
   getIncidentStats,
   getStatusColor,
   getPriorityColor,
   type Incident
-} from '../../services/incidentService';
+} from '../../services/incidentService'
 
 import {
   getCurrentUser,
   isAuthenticated,
-  getStoredToken
-} from '../../services/userService';
+  clearUserData,
+  type User
+} from '../../services/userService'
 
-import AllIncidents from '../../../../Components/AllIncidents';
-import AssignIncidents from '../../../../Components/AssignIncidents';
+// Dynamic imports
+const Chart = dynamic(() => import('react-apexcharts'), {
+  ssr: false,
+  loading: () => <Spinner color="primary" />
+})
 
-const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
+// Types
+interface DashboardState {
+  managedIncidents: Incident[]
+  loading: boolean
+  error: string | null
+}
 
-// Define API base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+interface UserState {
+  name: string
+  team: string
+  email: string
+  userId: string
+}
 
-const IncidentManagerDashboard = () => {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+interface HandlerPerformanceData {
+  handlers: string[]
+  pending: number[]
+  inProgress: number[]
+  resolved: number[]
+}
 
-  const viewParam = searchParams.get('view');
-  const [currentView, setCurrentView] = useState(viewParam || 'dashboard');
+type ViewType = 'dashboard' | 'request-form' | 'my-requests' | 'all-incidents' | 'assign-incidents'
 
-  const [dashboardData, setDashboardData] = useState({
-    managedIncidents: [] as Incident[],
+// Constants
+const VIEWS = {
+  DASHBOARD: 'dashboard' as const,
+  REQUEST_FORM: 'request-form' as const,
+  MY_REQUESTS: 'my-requests' as const,
+  ALL_INCIDENTS: 'all-incidents' as const,
+  ASSIGN_INCIDENTS: 'assign-incidents' as const,
+}
+
+const IncidentManagerDashboard: React.FC = () => {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // State
+  const [currentView, setCurrentView] = useState<ViewType>(
+    (searchParams.get('view') as ViewType) || VIEWS.DASHBOARD
+  )
+  const [dashboardData, setDashboardData] = useState<DashboardState>({
+    managedIncidents: [],
     loading: true,
-    error: null as string | null
-  });
-
-  const [user, setUser] = useState({
+    error: null
+  })
+  const [user, setUser] = useState<UserState>({
     name: '',
     team: '',
     email: '',
     userId: ''
-  });
+  })
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
+  const [handlerPerformanceData, setHandlerPerformanceData] = useState<HandlerPerformanceData>({
+    handlers: [],
+    pending: [],
+    inProgress: [],
+    resolved: []
+  })
 
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  // Helper functions
+  const getIncidentNumber = useCallback((incident: Incident): string => {
+    return incident.incident_no || incident.id?.toString() || 'Unknown'
+  }, [])
 
-  // State for SLA breach data
-  const [slaBreachData, setSlaBreachData] = useState({
-    data: [] as number[],
-    labels: [] as string[],
-    colors: [] as string[]
-  });
-
-  // State for handler performance data
-  const [handlerPerformanceData, setHandlerPerformanceData] = useState({
-    handlers: [] as string[],
-    pending: [] as number[],
-    breached: [] as number[],
-    resolved: [] as number[]
-  });
-
-  // Safe helper functions to prevent object rendering errors
-  const getIncidentNumber = (incident: Incident): string => {
-    if (incident.incident_no) return incident.incident_no;
-    if (typeof incident.id === 'number') return incident.id.toString();
-    return 'Unknown';
-  };
-
-  const getCategoryName = (incident: Incident): string => {
+  const getCategoryName = useCallback((incident: Incident): string => {
     if (incident.category && typeof incident.category === 'object' && incident.category.name) {
-      return incident.category.name;
+      return incident.category.name
     }
-    return 'Uncategorized';
-  };
+    return 'Uncategorized'
+  }, [])
 
-  const getPriorityName = (incident: Incident): string => {
+  const getPriorityName = useCallback((incident: Incident): string => {
     if (incident.priority && typeof incident.priority === 'object' && incident.priority.name) {
-      return incident.priority.name;
+      return incident.priority.name
     }
     if (incident.urgency && typeof incident.urgency === 'object' && incident.urgency.name) {
-      return incident.urgency.name;
+      return incident.urgency.name
     }
-    return 'Medium';
-  };
+    return 'Medium'
+  }, [])
 
-  const getStatusName = (incident: Incident): 'pending' | 'in_progress' | 'resolved' | 'closed' => {
-    if (incident.status) return incident.status;
+  const getStatusName = useCallback((incident: Incident): 'pending' | 'in_progress' | 'resolved' | 'closed' => {
+    if (incident.incidentstate && typeof incident.incidentstate === 'string') {
+      return incident.incidentstate as 'pending' | 'in_progress' | 'resolved' | 'closed'
+    }
     if (incident.incidentstate && typeof incident.incidentstate === 'object' && incident.incidentstate.name) {
-      const state = incident.incidentstate.name.toLowerCase();
-      if (state === 'new') return 'pending';
-      if (state === 'inprogress') return 'in_progress';
-      if (state === 'resolved') return 'resolved';
-      if (state === 'closed') return 'closed';
+      const state = incident.incidentstate.name.toLowerCase()
+      switch (state) {
+        case 'new': return 'pending'
+        case 'inprogress': return 'in_progress'
+        case 'resolved': return 'resolved'
+        case 'closed': return 'closed'
+        default: return 'pending'
+      }
     }
-    return 'pending';
-  };
+    return 'pending'
+  }, [])
 
-  const getAssignedToName = (incident: Incident): string => {
-    if (!incident.assigned_to) return 'Unassigned';
+  const getAssignedToName = useCallback((incident: Incident): string => {
+    if (!incident.assigned_to) return 'Unassigned'
+    const firstName = incident.assigned_to.name || ''
+    const lastName = incident.assigned_to.last_name || ''
+    return firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'Unassigned'
+  }, [])
 
-    const firstName = incident.assigned_to.name || '';
-    const lastName = incident.assigned_to.last_name || '';
+  const getCreatedAt = useCallback((incident: Incident): string => {
+    return incident.created_at || new Date().toISOString()
+  }, [])
 
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`;
-    }
-    return firstName || lastName || 'Unassigned';
-  };
+  const getCallerName = useCallback((incident: Incident): string => {
+    if (!incident.user) return 'Unknown User'
+    const firstName = incident.user.name || ''
+    const lastName = incident.user.last_name || ''
+    return firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'Unknown User'
+  }, [])
 
-  const getShortDescription = (incident: Incident): string => {
-    return incident.short_description || 'No description';
-  };
-
-  const getCreatedAt = (incident: Incident): string => {
-    return incident.created_at || new Date().toISOString();
-  };
-
-  const getCallerName = (incident: Incident): string => {
-    if (!incident.user) return 'Unknown User';
-
-    const firstName = incident.user.name || '';
-    const lastName = incident.user.last_name || '';
-
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`;
-    }
-    return firstName || lastName || 'Unknown User';
-  };
-
-  const getSLAStatus = (incident: Incident): string => {
-    const createdTime = new Date(getCreatedAt(incident));
-    const now = new Date();
-    const hoursSinceCreated = (now.getTime() - createdTime.getTime()) / (1000 * 60 * 60);
-
-    let slaLimit = 24; // default for low priority
-    const priority = getPriorityName(incident).toLowerCase();
-    if (priority.includes('critical')) {
-      slaLimit = 4;
-    } else if (priority.includes('high')) {
-      slaLimit = 8;
-    } else if (priority.includes('medium')) {
-      slaLimit = 12;
-    }
-
-    const status = getStatusName(incident);
-    if (status === 'resolved' || status === 'closed') {
-      return 'Within SLA';
-    }
-
-    return hoursSinceCreated > slaLimit ? 'SLA Breached' : 'Within SLA';
-  };
-
-  // Fetch data
-  const fetchData = async () => {
+  const formatDateLocal = useCallback((dateString: string): string => {
     try {
-      setDashboardData(prev => ({ ...prev, loading: true, error: null }));
+      return new Date(dateString).toLocaleDateString()
+    } catch {
+      return 'Unknown'
+    }
+  }, [])
+
+  // Data fetching functions
+  const fetchData = useCallback(async (): Promise<void> => {
+    try {
+      console.log('=== INCIDENT MANAGER DASHBOARD DEBUG START ===');
+
+      setDashboardData(prev => ({ ...prev, loading: true, error: null }))
 
       if (!isAuthenticated()) {
-        router.replace('/auth/login');
-        return;
+        console.log('User not authenticated, redirecting to login');
+        router.replace('/auth/login')
+        return
       }
 
-      const currentUser = getCurrentUser();
+      const currentUser = getCurrentUser()
+      console.log('getCurrentUser() result:', currentUser);
+
+      if (!currentUser.id) {
+        throw new Error('User ID not found. Please log in again.')
+      }
+
       setUser({
-        name: currentUser?.name || 'Manager',
-        team: currentUser?.team || 'Incident Manager',
-        email: currentUser?.email || '',
-        userId: currentUser?.id || ''
-      });
+        name: currentUser.first_name || 'Manager',
+        team: currentUser.team_name || 'Incident Manager',
+        email: currentUser.email || '',
+        userId: currentUser.id.toString()
+      })
 
-      console.log('🔍 Manager Dashboard: Fetching incidents...');
-      console.log('👤 Current user:', currentUser);
-
-      const allIncidents = await fetchAllIncidents();
-
-      console.log('📊 Manager Dashboard: Received incidents:', allIncidents);
-      console.log('📊 Total incidents count:', allIncidents.length);
+      console.log('About to fetch manager incidents...');
+      const managerIncidents = await fetchManagerIncidents()
+      console.log('Fetched manager incidents:', managerIncidents);
 
       setDashboardData({
-        managedIncidents: allIncidents,
+        managedIncidents: managerIncidents,
         loading: false,
         error: null
-      });
+      })
 
-      console.log('✅ Manager Dashboard data updated successfully');
-
+      console.log('=== INCIDENT MANAGER DASHBOARD DEBUG END ===');
     } catch (error: any) {
-      console.error('❌ Manager Dashboard fetch error:', error);
+      console.error('Manager Dashboard fetch error:', error)
       setDashboardData(prev => ({
         ...prev,
         loading: false,
         error: error.message || 'Failed to load dashboard data'
-      }));
+      }))
     }
-  };
+  }, [router])
 
-  // SLA Breach Distribution data for donut chart
-  const getSLABreachData = async () => {
+  const getHandlerPerformanceData = useCallback(async (): Promise<HandlerPerformanceData> => {
     if (dashboardData.managedIncidents.length === 0) {
-      return { data: [], labels: [], colors: [] };
+      return { handlers: [], pending: [], inProgress: [], resolved: [] }
     }
 
-    try {
-      const token = getStoredToken();
-      if (token) {
-        console.log('🔍 Fetching SLA details from API endpoint...');
-
-        const response = await fetch(`${API_BASE_URL}/incident-sla-details`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          const slaDetails = result.data || result;
-
-          console.log('📊 SLA Details from API:', slaDetails);
-
-          if (slaDetails && typeof slaDetails === 'object') {
-            const data = [];
-            const labels = [];
-            const colors = ['#ef4444', '#f59e0b', '#8b5cf6', '#06b6d4'];
-
-            if (slaDetails.responseTime && slaDetails.responseTime > 0) {
-              data.push(slaDetails.responseTime);
-              labels.push('Response Time');
-            }
-            if (slaDetails.resolutionTime && slaDetails.resolutionTime > 0) {
-              data.push(slaDetails.resolutionTime);
-              labels.push('Resolution Time');
-            }
-            if (slaDetails.availability && slaDetails.availability > 0) {
-              data.push(slaDetails.availability);
-              labels.push('Availability');
-            }
-            if (slaDetails.quality && slaDetails.quality > 0) {
-              data.push(slaDetails.quality);
-              labels.push('Quality');
-            }
-
-            if (data.length === 0) {
-              return {
-                data: [1],
-                labels: ['No SLA Breaches'],
-                colors: ['#10b981']
-              };
-            }
-
-            return {
-              data,
-              labels,
-              colors: colors.slice(0, data.length)
-            };
-          }
-        } else {
-          console.warn('⚠️ SLA API endpoint not ready:', response.status);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error fetching SLA details:', error);
-    }
-
-    // Fallback: Calculate SLA breaches from incident data
-    console.log('📊 Using fallback: calculating SLA breaches from incident data');
-    const breachedIncidents = dashboardData.managedIncidents.filter(incident =>
-      getSLAStatus(incident) === 'SLA Breached'
-    );
-    const withinSLAIncidents = dashboardData.managedIncidents.filter(incident =>
-      getSLAStatus(incident) === 'Within SLA'
-    );
-
-    if (breachedIncidents.length === 0 && withinSLAIncidents.length === 0) {
-      return {
-        data: [1],
-        labels: ['No Data Available'],
-        colors: ['#6b7280']
-      };
-    }
-
-    return {
-      data: [withinSLAIncidents.length, breachedIncidents.length],
-      labels: ['Within SLA', 'SLA Breached'],
-      colors: ['#10b981', '#ef4444']
-    };
-  };
-
-  // Handler Performance data for bar chart
-  const getHandlerPerformanceData = async () => {
-    if (dashboardData.managedIncidents.length === 0) {
-      return { handlers: [], pending: [], breached: [], resolved: [] };
-    }
-
-    try {
-      const token = getStoredToken();
-      if (token) {
-        console.log('🔍 Fetching all users for handler performance chart...');
-
-        const response = await fetch(`${API_BASE_URL}/users`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          const allUsers = result.data || result.users || result;
-
-          console.log('📊 Total users from API:', allUsers.length);
-
-          const handlerUsers = allUsers.filter((user: any) => {
-            const userTeam = (user.team_name || user.team || '').toLowerCase();
-            return userTeam.includes('handler') ||
-                   userTeam.includes('field') ||
-                   userTeam.includes('engineer') ||
-                   userTeam.includes('expert') ||
-                   userTeam.includes('water') ||
-                   userTeam.includes('pollution');
-          });
-
-          console.log('📊 Found handlers from API:', handlerUsers.length);
-
-          const handlerMap = new Map();
-
-          handlerUsers.forEach((user: any) => {
-            const firstName = user.first_name || user.name;
-            const lastName = user.last_name;
-            const handlerName = firstName && lastName ? `${firstName} ${lastName}` : firstName || 'Unknown';
-
-            handlerMap.set(handlerName, {
-              pending: 0,
-              breached: 0,
-              resolved: 0
-            });
-          });
-
-          dashboardData.managedIncidents.forEach(incident => {
-            let handlerName = getAssignedToName(incident);
-
-            if (!handlerName || handlerName.trim() === '' || handlerName.toLowerCase() === 'unassigned') {
-              handlerName = 'Unassigned';
-            }
-
-            if (!handlerMap.has(handlerName)) {
-              handlerMap.set(handlerName, {
-                pending: 0,
-                breached: 0,
-                resolved: 0
-              });
-            }
-
-            const handlerStats = handlerMap.get(handlerName);
-
-            const createdTime = new Date(getCreatedAt(incident));
-            const now = new Date();
-            const hoursSinceCreated = (now.getTime() - createdTime.getTime()) / (1000 * 60 * 60);
-
-            let slaLimit = 24;
-            const priority = getPriorityName(incident).toLowerCase();
-            if (priority.includes('critical')) {
-              slaLimit = 4;
-            } else if (priority.includes('high')) {
-              slaLimit = 8;
-            } else if (priority.includes('medium')) {
-              slaLimit = 12;
-            }
-
-            const isBreached = hoursSinceCreated > slaLimit && getStatusName(incident) !== 'resolved';
-
-            const status = getStatusName(incident);
-            if (status === 'resolved') {
-              handlerStats.resolved++;
-            } else if (isBreached) {
-              handlerStats.breached++;
-            } else {
-              handlerStats.pending++;
-            }
-          });
-
-          let handlers: string[] = [];
-          let pending: number[] = [];
-          let breached: number[] = [];
-          let resolved: number[] = [];
-
-          const sortedHandlers = Array.from(handlerMap.entries())
-            .map(([name, stats]) => ({
-              name,
-              ...stats,
-              total: stats.pending + stats.breached + stats.resolved
-            }))
-            .sort((a, b) => b.total - a.total);
-
-          console.log('📊 Complete Handler Performance Data:', sortedHandlers);
-
-          sortedHandlers.forEach(handler => {
-            handlers.push(handler.name);
-            pending.push(handler.pending);
-            breached.push(handler.breached);
-            resolved.push(handler.resolved);
-          });
-
-          return { handlers, pending, breached, resolved };
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error fetching users for handler performance:', error);
-    }
-
-    // Fallback: Group incidents by handler using just incident data
-    console.log('📊 Using fallback: grouping by incident assignments only');
-
-    const handlerMap = new Map();
+    const handlerMap = new Map<string, { pending: number; inProgress: number; resolved: number }>()
 
     dashboardData.managedIncidents.forEach(incident => {
-      let handlerName = getAssignedToName(incident);
+      let handlerName = getAssignedToName(incident)
 
       if (!handlerName || handlerName.trim() === '' || handlerName.toLowerCase() === 'unassigned') {
-        handlerName = 'Unassigned';
-      } else {
-        if (handlerName.includes('@')) {
-          handlerName = handlerName.split('@')[0];
-        }
+        handlerName = 'Unassigned'
+      } else if (handlerName.includes('@')) {
+        handlerName = handlerName.split('@')[0]
       }
 
       if (!handlerMap.has(handlerName)) {
-        handlerMap.set(handlerName, {
-          pending: 0,
-          breached: 0,
-          resolved: 0
-        });
+        handlerMap.set(handlerName, { pending: 0, inProgress: 0, resolved: 0 })
       }
 
-      const handlerStats = handlerMap.get(handlerName);
+      const handlerStats = handlerMap.get(handlerName)!
+      const status = getStatusName(incident)
 
-      const createdTime = new Date(getCreatedAt(incident));
-      const now = new Date();
-      const hoursSinceCreated = (now.getTime() - createdTime.getTime()) / (1000 * 60 * 60);
-
-      let slaLimit = 24;
-      const priority = getPriorityName(incident).toLowerCase();
-      if (priority.includes('critical')) {
-        slaLimit = 4;
-      } else if (priority.includes('high')) {
-        slaLimit = 8;
-      } else if (priority.includes('medium')) {
-        slaLimit = 12;
-      }
-
-      const isBreached = hoursSinceCreated > slaLimit && getStatusName(incident) !== 'resolved';
-
-      const status = getStatusName(incident);
-      if (status === 'resolved') {
-        handlerStats.resolved++;
-      } else if (isBreached) {
-        handlerStats.breached++;
+      if (status === 'resolved' || status === 'closed') {
+        handlerStats.resolved++
+      } else if (status === 'in_progress') {
+        handlerStats.inProgress++
       } else {
-        handlerStats.pending++;
+        handlerStats.pending++
       }
-    });
-
-    let handlers: string[] = [];
-    let pending: number[] = [];
-    let breached: number[] = [];
-    let resolved: number[] = [];
+    })
 
     const sortedHandlers = Array.from(handlerMap.entries())
       .map(([name, stats]) => ({
         name,
         ...stats,
-        total: stats.pending + stats.breached + stats.resolved
+        total: stats.pending + stats.inProgress + stats.resolved
       }))
       .filter(h => h.total > 0)
-      .sort((a, b) => b.total - a.total);
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10) // Limit to top 10 handlers
 
-    console.log('📊 Fallback Handler Performance Data:', sortedHandlers);
-
-    const minHandlers = 10;
-    const actualHandlers = sortedHandlers.length;
-
-    if (actualHandlers < minHandlers) {
-      const handlerNames = [
-        'Alex Chen', 'Sarah Wilson', 'Mike Johnson', 'Emily Brown',
-        'David Lee', 'Lisa Garcia', 'Tom Anderson', 'Maria Rodriguez',
-        'James Taylor', 'Jennifer Wang', 'Chris Miller', 'Amy Zhang',
-        'Robert Davis', 'Anna Smith', 'Kevin Liu'
-      ];
-
-      sortedHandlers.forEach(handler => {
-        handlers.push(handler.name);
-        pending.push(handler.pending);
-        breached.push(handler.breached);
-        resolved.push(handler.resolved);
-      });
-
-      const placeholdersNeeded = minHandlers - actualHandlers;
-      for (let i = 0; i < placeholdersNeeded; i++) {
-        const placeholderName = handlerNames[actualHandlers + i] || `Handler ${actualHandlers + i + 1}`;
-        handlers.push(placeholderName);
-        pending.push(0);
-        breached.push(0);
-        resolved.push(0);
-      }
-    } else {
-      sortedHandlers.forEach(handler => {
-        handlers.push(handler.name);
-        pending.push(handler.pending);
-        breached.push(handler.breached);
-        resolved.push(handler.resolved);
-      });
+    return {
+      handlers: sortedHandlers.map(h => h.name),
+      pending: sortedHandlers.map(h => h.pending),
+      inProgress: sortedHandlers.map(h => h.inProgress),
+      resolved: sortedHandlers.map(h => h.resolved)
     }
+  }, [dashboardData.managedIncidents, getAssignedToName, getStatusName])
 
-    return { handlers, pending, breached, resolved };
-  };
+  // Navigation handlers
+  const handleBackToDashboard = useCallback((): void => {
+    setCurrentView(VIEWS.DASHBOARD)
+    const newUrl = new URL(window.location.href)
+    newUrl.searchParams.delete('view')
+    window.history.pushState({}, '', newUrl.toString())
+  }, [])
 
-  // Event handlers
-  const handlePinClick = (incident: Incident) => {
-    setSelectedIncident(incident);
-  };
+  const handleViewAllIncidents = useCallback((): void => {
+    setCurrentView(VIEWS.ALL_INCIDENTS)
+    const newUrl = new URL(window.location.href)
+    newUrl.searchParams.set('view', VIEWS.ALL_INCIDENTS)
+    window.history.pushState({}, '', newUrl.toString())
+  }, [])
 
-  const closeIncidentDetails = () => {
-    setSelectedIncident(null);
-  };
+  const handleViewAssignIncidents = useCallback((): void => {
+    setCurrentView(VIEWS.ASSIGN_INCIDENTS)
+    const newUrl = new URL(window.location.href)
+    newUrl.searchParams.set('view', VIEWS.ASSIGN_INCIDENTS)
+    window.history.pushState({}, '', newUrl.toString())
+  }, [])
 
-  const handleViewAllIncidents = () => {
-    setCurrentView('all-incidents');
-    const newUrl = new URL(window.location.href);
-    newUrl.searchParams.set('view', 'all-incidents');
-    window.history.pushState({}, '', newUrl.toString());
-  };
+  const handlePinClick = useCallback((incident: Incident): void => {
+    setSelectedIncident(incident)
+  }, [])
 
-  const handleViewAssignIncidents = () => {
-    setCurrentView('assign-incidents');
-    const newUrl = new URL(window.location.href);
-    newUrl.searchParams.set('view', 'assign-incidents');
-    window.history.pushState({}, '', newUrl.toString());
-  };
+  const closeIncidentDetails = useCallback((): void => {
+    setSelectedIncident(null)
+  }, [])
 
-  const handleBackToDashboard = () => {
-    setCurrentView('dashboard');
-    const newUrl = new URL(window.location.href);
-    newUrl.searchParams.delete('view');
-    window.history.pushState({}, '', newUrl.toString());
-  };
+  const handleLogout = useCallback((): void => {
+    clearUserData()
+    router.replace('/auth/login')
+  }, [router])
 
-  const formatDateLocal = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString();
-    } catch {
-      return 'Unknown';
-    }
-  };
+  const handleRefreshData = useCallback(async (): Promise<void> => {
+    await fetchData()
+  }, [fetchData])
 
   // Effects
   useEffect(() => {
-    fetchData();
-  }, [router]);
+    const currentViewParam = searchParams.get('view') as ViewType
+    setCurrentView(currentViewParam || VIEWS.DASHBOARD)
+  }, [searchParams])
 
   useEffect(() => {
-    const currentViewParam = searchParams.get('view');
-    setCurrentView(currentViewParam || 'dashboard');
-  }, [searchParams]);
-
-  useEffect(() => {
-    const fetchSLAData = async () => {
-      const slaData = await getSLABreachData();
-      setSlaBreachData(slaData);
-    };
-
-    if (dashboardData.managedIncidents.length > 0) {
-      fetchSLAData();
+    if (currentView === VIEWS.DASHBOARD) {
+      fetchData()
     }
-  }, [dashboardData.managedIncidents]);
+  }, [currentView, fetchData])
 
   useEffect(() => {
-    const fetchHandlerData = async () => {
-      const data = await getHandlerPerformanceData();
-      setHandlerPerformanceData(data);
-    };
-
-    if (dashboardData.managedIncidents.length > 0) {
-      fetchHandlerData();
+    const loadHandlerData = async (): Promise<void> => {
+      const data = await getHandlerPerformanceData()
+      setHandlerPerformanceData(data)
     }
-  }, [dashboardData.managedIncidents]);
 
-  // Calculate stats
-  const stats = getIncidentStats(dashboardData.managedIncidents);
+    if (dashboardData.managedIncidents.length > 0 && currentView === VIEWS.DASHBOARD) {
+      loadHandlerData()
+    }
+  }, [dashboardData.managedIncidents, currentView, getHandlerPerformanceData])
 
-  // Render different views based on current view
-  if (currentView === 'all-incidents') {
-    return <AllIncidents userType="manager" onBack={handleBackToDashboard} />;
+  // View routing
+  if (currentView === VIEWS.REQUEST_FORM) {
+    return <RequestForm userType="manager" onBack={handleBackToDashboard} initialView="form" />
   }
 
-  if (currentView === 'assign-incidents') {
-    return <AssignIncidents userType="manager" onBack={handleBackToDashboard} />;
+  if (currentView === VIEWS.MY_REQUESTS) {
+    return <MyRequests userType="manager" onBack={handleBackToDashboard} />
+  }
+
+  if (currentView === VIEWS.ALL_INCIDENTS) {
+    return <AllIncidents userType="manager" onBack={handleBackToDashboard} />
+  }
+
+  if (currentView === VIEWS.ASSIGN_INCIDENTS) {
+    return <AssignIncidents userType="manager" onBack={handleBackToDashboard} />
   }
 
   // Loading state
@@ -612,12 +339,11 @@ const IncidentManagerDashboard = () => {
     return (
       <Container fluid>
         <div className="text-center py-5">
-          <div className="spinner-border text-warning" role="status">
-            <span className="visually-hidden">Loading manager dashboard...</span>
-          </div>
+          <Spinner color="warning" style={{ width: '3rem', height: '3rem' }} />
+          <p className="mt-3 text-muted">Loading manager dashboard...</p>
         </div>
       </Container>
-    );
+    )
   }
 
   // Error state
@@ -626,17 +352,31 @@ const IncidentManagerDashboard = () => {
       <Container fluid>
         <div className="alert alert-danger mt-3">
           <strong>Error:</strong> {dashboardData.error}
-          <Button color="link" onClick={fetchData} className="p-0 ms-2">Try again</Button>
+          <div className="mt-2">
+            <Button color="primary" onClick={handleRefreshData} className="me-2">
+              Try again
+            </Button>
+            <Button color="secondary" onClick={handleLogout}>
+              Logout & Login Again
+            </Button>
+          </div>
         </div>
       </Container>
-    );
+    )
   }
 
+  // Get statistics
+  const stats = getIncidentStats(dashboardData.managedIncidents)
+
   // Chart configurations
-  const slaBreachOptions = {
+  const statusOverviewSeries = [stats.pending, stats.inProgress, stats.resolved, stats.closed]
+  const statusOverviewLabels = ['Pending', 'In Progress', 'Resolved', 'Closed']
+  const statusOverviewColors = ['#f59e0b', '#3b82f6', '#10b981', '#6b7280']
+
+  const statusOverviewOptions = {
     chart: { type: 'donut' as const, height: 280 },
-    labels: slaBreachData.labels,
-    colors: slaBreachData.colors,
+    labels: statusOverviewLabels,
+    colors: statusOverviewColors,
     legend: { position: 'bottom' as const },
     dataLabels: {
       enabled: true,
@@ -650,41 +390,31 @@ const IncidentManagerDashboard = () => {
             show: true,
             total: {
               show: true,
-              label: 'Breaches',
-              formatter: () => {
-                const total = slaBreachData.data.reduce((a, b) => a + b, 0);
-                return `${total}`;
-              }
+              label: 'Total',
+              formatter: () => `${stats.total}`
             }
           }
         }
       }
     }
-  };
+  }
 
   const barChartOptions = {
     chart: { type: 'bar' as const, height: 400 },
     plotOptions: {
       bar: {
         horizontal: false,
-        columnWidth: '55%',
-        dataLabels: {
-          position: 'top'
-        }
+        columnWidth: '55%'
       }
     },
     dataLabels: { enabled: false },
     stroke: { show: true, width: 2, colors: ['transparent'] },
     xaxis: {
       categories: handlerPerformanceData.handlers,
-      title: {
-        text: 'Handlers'
-      },
+      title: { text: 'Team Members' },
       labels: {
         rotate: -45,
-        style: {
-          fontSize: '12px'
-        }
+        style: { fontSize: '12px' }
       }
     },
     yaxis: {
@@ -692,36 +422,66 @@ const IncidentManagerDashboard = () => {
       min: 0
     },
     fill: { opacity: 1 },
-    colors: ['#ffc107', '#ef4444', '#10b981'],
+    colors: ['#ffc107', '#3b82f6', '#10b981'],
     legend: {
       position: 'top' as const,
       horizontalAlign: 'center' as const
     },
     tooltip: {
       y: {
-        formatter: function (val: number) {
-          return val + " incidents"
-        }
+        formatter: (val: number) => `${val} incidents`
       }
     }
-  };
+  }
 
   const barChartSeries = [
     { name: 'Pending', data: handlerPerformanceData.pending },
-    { name: 'SLA Breached', data: handlerPerformanceData.breached },
+    { name: 'In Progress', data: handlerPerformanceData.inProgress },
     { name: 'Resolved', data: handlerPerformanceData.resolved }
-  ];
+  ]
 
-  // Main dashboard view
   return (
     <>
       <Container fluid>
-        {/* Header */}
+        {/* Welcome Header */}
         <Row>
           <Col xs={12}>
             <Card className="mb-4 mt-4">
               <CardBody>
-                <h4 className="mb-1">Welcome back, {user.name}!</h4>
+                <div className="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h4 className="mb-1">Welcome back, {user.name}!</h4>
+                    <small className="text-muted">
+                      Incident Manager Dashboard - Team Oversight & Performance Management (User ID: {user.userId})
+                    </small>
+                  </div>
+                  <div>
+                    <Button color="outline-primary" size="sm" onClick={handleRefreshData}>
+                      🔄 Refresh
+                    </Button>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Quick Actions */}
+        <Row>
+          <Col xs={12}>
+            <Card className="mb-4">
+              <CardBody>
+                <div className="d-flex justify-content-between align-items-center">
+                  <h6 className="mb-0">🚀 Quick Management Actions</h6>
+                  <div className="d-flex gap-2">
+                    <Button color="primary" size="sm" onClick={handleViewAllIncidents}>
+                      📋 All Incidents
+                    </Button>
+                    <Button color="warning" size="sm" onClick={handleViewAssignIncidents}>
+                      🎯 Assign Incidents
+                    </Button>
+                  </div>
+                </div>
               </CardBody>
             </Card>
           </Col>
@@ -746,19 +506,18 @@ const IncidentManagerDashboard = () => {
           ))}
         </Row>
 
-        {/* Analytics Row */}
+        {/* Status Overview and Map */}
         <Row className="mb-4">
-          {/* SLA Breach Analysis Chart */}
           <Col lg={4}>
             <Card className="h-100">
               <CardHeader>
-                <h5 className="mb-0">🚨 SLA Breach Analysis</h5>
+                <h5 className="mb-0">📊 Status Overview</h5>
               </CardHeader>
               <CardBody>
                 {stats.total > 0 ? (
                   <Chart
-                    options={slaBreachOptions}
-                    series={slaBreachData.data}
+                    options={statusOverviewOptions}
+                    series={statusOverviewSeries}
                     type="donut"
                     height={280}
                   />
@@ -767,17 +526,18 @@ const IncidentManagerDashboard = () => {
                     <div className="text-muted mb-3">
                       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
                         <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 6v6l4 2"/>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                        <line x1="9" y1="9" x2="9.01" y2="9"/>
+                        <line x1="15" y1="9" x2="15.01" y2="9"/>
                       </svg>
                     </div>
-                    <p className="text-muted">No SLA breach data available</p>
+                    <p className="text-muted">No incident data available</p>
                   </div>
                 )}
               </CardBody>
             </Card>
           </Col>
 
-          {/* Interactive Map */}
           <Col lg={8}>
             <Card className="h-100">
               <CardHeader>
@@ -794,12 +554,12 @@ const IncidentManagerDashboard = () => {
           </Col>
         </Row>
 
-        {/* Handler Performance Chart */}
+        {/* Team Performance */}
         <Row className="mb-4">
           <Col lg={12}>
             <Card>
               <CardHeader>
-                <h5 className="mb-0">👤 Team Performance Overview</h5>
+                <h5 className="mb-0">👥 Team Performance Overview</h5>
               </CardHeader>
               <CardBody>
                 {stats.total > 0 && handlerPerformanceData.handlers.length > 0 ? (
@@ -817,8 +577,8 @@ const IncidentManagerDashboard = () => {
                         <circle cx="12" cy="7" r="4"/>
                       </svg>
                     </div>
-                    <p className="text-muted">No handler performance data available</p>
-                    <small className="text-muted">Handler incident data will appear here as incidents are assigned to handlers</small>
+                    <p className="text-muted">No team performance data available</p>
+                    <small className="text-muted">Performance data will appear as incidents are assigned</small>
                   </div>
                 )}
               </CardBody>
@@ -826,13 +586,13 @@ const IncidentManagerDashboard = () => {
           </Col>
         </Row>
 
-        {/* Recent Incidents Table */}
+        {/* Recent Incidents */}
         <Row>
           <Col lg={12}>
             <Card>
               <CardHeader>
                 <div className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">⏳ Recent Incidents ({dashboardData.managedIncidents.length} total)</h5>
+                  <h5 className="mb-0">📋 Recent Incidents ({dashboardData.managedIncidents.length} total)</h5>
                   <div>
                     <Button color="outline-primary" size="sm" onClick={handleViewAllIncidents} className="me-2">
                       View All Incidents
@@ -853,24 +613,22 @@ const IncidentManagerDashboard = () => {
                           <th>Category</th>
                           <th>Priority</th>
                           <th>Status</th>
-                          <th>SLA Status</th>
                           <th>Assigned To</th>
                           <th>Created</th>
                           <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {dashboardData.managedIncidents.slice(0, 5).map((incident) => {
-                          const slaStatus = getSLAStatus(incident);
-                          return (
+                        {dashboardData.managedIncidents
+                          .sort((a, b) => new Date(getCreatedAt(b)).getTime() - new Date(getCreatedAt(a)).getTime())
+                          .slice(0, 5)
+                          .map((incident) => (
                             <tr key={incident.id}>
                               <td>
                                 <span className="fw-medium text-primary">{getIncidentNumber(incident)}</span>
                               </td>
                               <td>
-                                <div>
-                                  <div className="fw-medium">{getCategoryName(incident)}</div>
-                                </div>
+                                <div className="fw-medium">{getCategoryName(incident)}</div>
                               </td>
                               <td>
                                 <Badge style={{
@@ -889,11 +647,6 @@ const IncidentManagerDashboard = () => {
                                 </Badge>
                               </td>
                               <td>
-                                <Badge color={slaStatus === 'Within SLA' ? 'success' : 'danger'}>
-                                  {slaStatus}
-                                </Badge>
-                              </td>
-                              <td>
                                 <small className="text-muted">{getAssignedToName(incident)}</small>
                               </td>
                               <td>
@@ -909,8 +662,7 @@ const IncidentManagerDashboard = () => {
                                 </Button>
                               </td>
                             </tr>
-                          );
-                        })}
+                          ))}
                       </tbody>
                     </table>
                   </div>
@@ -927,7 +679,7 @@ const IncidentManagerDashboard = () => {
                     <p className="text-muted mb-0">No incidents found</p>
                     <small className="text-muted">Incidents will appear here as they are created and assigned</small>
                     <div className="mt-3">
-                      <Button color="primary" onClick={fetchData}>Refresh Data</Button>
+                      <Button color="primary" onClick={handleRefreshData}>Refresh Data</Button>
                     </div>
                   </div>
                 )}
@@ -983,14 +735,13 @@ const IncidentManagerDashboard = () => {
                       <div>{getCategoryName(selectedIncident)}</div>
                     </div>
                     <div className="mb-3">
-                      <strong>Sub Category:</strong>
-                      <div>{selectedIncident.subcategory?.name || 'Not specified'}</div>
-                    </div>
-                    <div className="mb-3">
                       <strong>Priority:</strong>
                       <div>
                         <Badge
-                          style={{ backgroundColor: getPriorityColor(getPriorityName(selectedIncident)), color: 'white' }}
+                          style={{
+                            backgroundColor: getPriorityColor(getPriorityName(selectedIncident)),
+                            color: 'white'
+                          }}
                           className="fs-6"
                         >
                           {getPriorityName(selectedIncident)}
@@ -1003,18 +754,13 @@ const IncidentManagerDashboard = () => {
                       <strong>Status:</strong>
                       <div>
                         <Badge
-                          style={{ backgroundColor: getStatusColor(getStatusName(selectedIncident)), color: 'white' }}
+                          style={{
+                            backgroundColor: getStatusColor(getStatusName(selectedIncident)),
+                            color: 'white'
+                          }}
                           className="fs-6"
                         >
                           {getStatusName(selectedIncident).replace('_', ' ')}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="mb-3">
-                      <strong>SLA Status:</strong>
-                      <div>
-                        <Badge color={getSLAStatus(selectedIncident) === 'Within SLA' ? 'success' : 'danger'} className="fs-6">
-                          {getSLAStatus(selectedIncident)}
                         </Badge>
                       </div>
                     </div>
@@ -1032,11 +778,12 @@ const IncidentManagerDashboard = () => {
                 <div className="mb-3">
                   <strong>Description:</strong>
                   <div className="mt-1 p-2 bg-light rounded">
-                    {getShortDescription(selectedIncident)}
+                    {selectedIncident.short_description || 'No description available'}
                   </div>
                 </div>
 
-                {selectedIncident.description && selectedIncident.description !== getShortDescription(selectedIncident) && (
+                {selectedIncident.description &&
+                 selectedIncident.description !== selectedIncident.short_description && (
                   <div className="mb-3">
                     <strong>Detailed Description:</strong>
                     <div className="mt-1 p-2 bg-light rounded">
@@ -1065,7 +812,9 @@ const IncidentManagerDashboard = () => {
                     <div className="mb-3">
                       <strong>Reported By:</strong>
                       <div>{getCallerName(selectedIncident)}</div>
-                      <small className="text-muted">{selectedIncident.reported_by || selectedIncident.user?.email || ''}</small>
+                      <small className="text-muted">
+                        {selectedIncident.reported_by || selectedIncident.user?.email || ''}
+                      </small>
                     </div>
                   </Col>
                   <Col md={6}>
@@ -1077,8 +826,26 @@ const IncidentManagerDashboard = () => {
                 </Row>
 
                 <div className="text-center mt-4">
-                  <Button color="warning" className="me-2">Assign Handler</Button>
-                  <Button color="primary" className="me-2">Edit Incident</Button>
+                  <Button
+                    color="warning"
+                    className="me-2"
+                    onClick={() => {
+                      closeIncidentDetails();
+                      handleViewAssignIncidents();
+                    }}
+                  >
+                    Assign Handler
+                  </Button>
+                  <Button
+                    color="primary"
+                    className="me-2"
+                    onClick={() => {
+                      closeIncidentDetails();
+                      handleViewAllIncidents();
+                    }}
+                  >
+                    View All Incidents
+                  </Button>
                   <Button color="outline-secondary" onClick={closeIncidentDetails}>Close</Button>
                 </div>
               </CardBody>

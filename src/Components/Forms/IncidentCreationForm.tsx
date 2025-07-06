@@ -18,7 +18,8 @@ import {
 } from '../../app/(MainBody)/services/masterService';
 
 import {
-  getCurrentUser
+  getCurrentUser,
+  getStoredToken
 } from '../../app/(MainBody)/services/userService';
 
 interface IncidentFormData {
@@ -98,6 +99,21 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
     error: null as string | null
   });
 
+  // Helper function to extract user ID from JWT token
+  const getUserIdFromToken = (): string | null => {
+    const token = getStoredToken()
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        return payload.sub || null
+      } catch (error) {
+        console.error('Failed to extract user ID from JWT token:', error)
+        return null
+      }
+    }
+    return null
+  }
+
   useEffect(() => {
     const loadMasterData = async () => {
       setMasterData(prev => ({ ...prev, loading: true, error: null }));
@@ -131,14 +147,6 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
           console.error('Sites API failed:', sitesRes.reason);
         }
 
-        console.log('Extracted data:', {
-          categories: categories.length,
-          contactTypes: contactTypes.length,
-          impacts: impacts.length,
-          urgencies: urgencies.length,
-          assets: assets.length,
-          sites: sites.length
-        });
 
         setMasterData(prev => ({
           ...prev,
@@ -335,11 +343,21 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
     setError(null);
 
     try {
+      console.log('=== INCIDENT CREATION DEBUG START ===');
+
+      // Get user ID from JWT token
+      const userId = getUserIdFromToken();
+      console.log('Extracted user ID from JWT:', userId);
+
+      if (!userId) {
+        throw new Error('User ID not found in JWT token. Please log in again.');
+      }
+
       const currentUser = getCurrentUser();
-      if (!currentUser?.id) throw new Error('User not authenticated');
+      console.log('getCurrentUser() result:', currentUser);
 
       const incidentData = {
-        user_id: parseInt(currentUser.id),
+        user_id: parseInt(userId),
         incidentstate_id: 1,
         urgency_id: parseInt(formData.urgency_id),
         category_id: parseInt(formData.category_id),
@@ -370,6 +388,7 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
       }
 
       const createdIncident = await createIncident(incidentData);
+      console.log('Incident created successfully:', createdIncident);
 
       if (onIncidentCreated) {
         onIncidentCreated(createdIncident);
@@ -403,6 +422,8 @@ const IncidentCreationForm: React.FC<IncidentCreationFormProps> = ({
         setShowSuccess(false);
         if (onSuccess) onSuccess();
       }, 3000);
+
+      console.log('=== INCIDENT CREATION DEBUG END ===');
 
     } catch (error: any) {
       console.error('Error creating incident:', error);

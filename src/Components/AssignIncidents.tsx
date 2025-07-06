@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Container,
   Row,
@@ -18,7 +18,10 @@ import {
   FormGroup,
   Label,
   Alert,
-  ButtonGroup
+  ButtonGroup,
+  Nav,
+  NavItem,
+  NavLink
 } from 'reactstrap'
 import { useRouter } from 'next/navigation'
 import {
@@ -28,178 +31,173 @@ import {
   getStoredToken
 } from '../app/(MainBody)/services/userService'
 import {
-  fetchAllIncidentsForAssignment,
+  fetchHandlerIncidents,
+  fetchManagerIncidents,
+  fetchEndUserIncidents,
+  fetchFieldEngineerIncidents,
+  fetchExpertTeamIncidents,
   getStatusColor,
   getPriorityColor,
   type Incident
 } from '../app/(MainBody)/services/incidentService'
 
-// TODO: Remove this import when real API is implemented
-import { EXPERT_TEAM_FAKE_DATA } from '../app/(MainBody)/dashboard/expert_team/page'
+type ExtendedIncident = Incident & {
+  assigned_to?: {
+    id: number
+    name: string
+    email?: string
+    team_name?: string
+    team_id?: number
+  } | null
+  assigned_by?: {
+    id: number
+    name: string
+    email?: string
+  } | null
+}
 
 interface AssignIncidentsProps {
-  userType?: 'admin' | 'manager' | 'handler' | 'expert' | 'expert_team'
+  userType?: 'admin' | 'manager' | 'handler' | 'expert' | 'expert_team' | 'field_engineer'
   onBack?: () => void
 }
 
-interface AssignmentTarget {
-  id: string
-  name: string
-  email: string
-  team: string
-  team_id: number
-}
-
-interface User {
-  id: string
-  team: string
-  [key: string]: any
-}
-
-interface ApiUser {
-  first_name: string
-  last_name?: string | null
-  email: string
-  team_name: string
-  team_id: number
-  mobile?: string | null
-  address?: string | null
-  postcode?: string | null
-  created_at: string
-}
-
-interface ApiResponse {
-  success: boolean
-  data: ApiUser[]
-  message: string
-}
-
-interface AssignmentPayload {
-  user_id: number
-  incident_id: number
-  from: number
-  to: number
-  assignee_email: string
-  assignee_name: string
-  notes: string | null
-}
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://apexwpc.apextechno.co.uk/api'
-
-const ASSIGNABLE_ROLES = ['handler', 'field', 'engineer', 'expert'] as const
+const API_BASE_URL = 'https://apexwpc.apextechno.co.uk/api'
 const ITEMS_PER_PAGE = 10
+const REFRESH_INTERVAL = 30000
 
 const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) => {
   const router = useRouter()
 
-  // State management
-  const [incidents, setIncidents] = useState<Incident[]>([])
-  const [filteredIncidents, setFilteredIncidents] = useState<Incident[]>([])
+  // Core state
+  const [incidents, setIncidents] = useState<ExtendedIncident[]>([])
+  const [myActiveIncidents, setMyActiveIncidents] = useState<ExtendedIncident[]>([])
+  const [assignedToOthersIncidents, setAssignedToOthersIncidents] = useState<ExtendedIncident[]>([])
+  const [filteredIncidents, setFilteredIncidents] = useState<ExtendedIncident[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<any>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  // Tab management
+  const [activeTab, setActiveTab] = useState('active')
 
   // Assignment modal state
   const [showAssignModal, setShowAssignModal] = useState(false)
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
+  const [selectedIncident, setSelectedIncident] = useState<ExtendedIncident | null>(null)
   const [selectedAssignee, setSelectedAssignee] = useState('')
   const [selectedTeam, setSelectedTeam] = useState('')
   const [assignmentNotes, setAssignmentNotes] = useState('')
   const [assigning, setAssigning] = useState(false)
 
   // Assignment targets
-  const [assignmentTargets, setAssignmentTargets] = useState<AssignmentTarget[]>([])
-  const [allUsers, setAllUsers] = useState<AssignmentTarget[]>([])
+  const [assignmentTargets, setAssignmentTargets] = useState<any[]>([])
+  const [allUsers, setAllUsers] = useState<any[]>([])
   const [availableTeams, setAvailableTeams] = useState<string[]>([])
   const [loadingTargets, setLoadingTargets] = useState(false)
 
-  // Filters
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [priorityFilter, setPriorityFilter] = useState('all')
+  // Search
   const [searchTerm, setSearchTerm] = useState('')
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
 
-  // Helper functions
-  const getIncidentNumber = useCallback((incident: Incident): string => {
-    return incident.incident_no
-  }, [])
+  // Utility functions
+  const getIncidentNumber = (incident: ExtendedIncident): string => {
+    return incident.incident_no || `INC-${incident.id}`
+  }
 
-  const getShortDescription = useCallback((incident: Incident): string => {
-    return incident.short_description
-  }, [])
-
-  const getCategoryName = useCallback((incident: Incident): string => {
+  const getCategoryName = (incident: ExtendedIncident): string => {
     return incident.category?.name || 'Uncategorized'
-  }, [])
+  }
 
-  const getCallerName = useCallback((incident: Incident): string => {
+  const getCallerName = (incident: ExtendedIncident): string => {
+    if (!incident.user) return 'Unknown User'
     const fullName = incident.user.last_name
       ? `${incident.user.name} ${incident.user.last_name}`
       : incident.user.name
-    return fullName
-  }, [])
+    return fullName || 'Unknown User'
+  }
 
-  const getPriorityName = useCallback((incident: Incident): string => {
-    if (incident.priority?.name) return incident.priority.name
-    if (incident.priority && typeof incident.priority === 'string') return incident.priority
-    return incident.urgency?.name || 'Medium'
-  }, [])
+  const getPriorityName = (incident: ExtendedIncident): string => {
+    return incident.priority?.name || incident.urgency?.name || 'Medium'
+  }
 
-  const getStatus = useCallback((incident: Incident): 'pending' | 'in_progress' | 'resolved' | 'closed' => {
-    if (incident.status) return incident.status
+  const getStatus = (incident: ExtendedIncident): string => {
     const state = incident.incidentstate?.name?.toLowerCase()
     if (state === 'new') return 'pending'
     if (state === 'inprogress') return 'in_progress'
     if (state === 'resolved') return 'resolved'
     if (state === 'closed') return 'closed'
     return 'pending'
-  }, [])
+  }
 
-  const getAssignedToName = useCallback((incident: Incident): string => {
+  const getAssignedToName = (incident: ExtendedIncident): string => {
     if (!incident.assigned_to) return 'Unassigned'
-    const fullName = incident.assigned_to.last_name
-      ? `${incident.assigned_to.name} ${incident.assigned_to.last_name}`
-      : incident.assigned_to.name
-    return fullName
-  }, [])
+    return incident.assigned_to.name || 'Unknown User'
+  }
 
-  const getCreatedAt = useCallback((incident: Incident): string => {
-    return incident.created_at
-  }, [])
-
-  const isAssigned = useCallback((incident: Incident): boolean => {
-    return !!(incident.assigned_to && incident.assigned_to.name)
-  }, [])
-
-  const formatDate = useCallback((dateString: string): string => {
+  const formatDate = (dateString: string): string => {
     try {
       return new Date(dateString).toLocaleDateString('en-GB')
     } catch {
       return 'Invalid Date'
     }
-  }, [])
+  }
 
-  // Determine assignable roles based on current user
-  const getAssignableRoles = useCallback((currentUserRole: string): readonly string[] => {
-    const role = currentUserRole.toLowerCase()
-    if (role.includes('handler') || role.includes('manager')) {
-      return ASSIGNABLE_ROLES
+  const canManageIncident = (incident: ExtendedIncident): boolean => {
+    if (!user) return false
+
+    const userTeam = user.team_name?.toLowerCase() || ''
+
+    // Admin can manage all incidents
+    if (userTeam.includes('admin')) return true
+
+    // Handler can assign any incident they see
+    if (userTeam.includes('handler')) {
+      return true
     }
-    return ASSIGNABLE_ROLES
-  }, [])
 
-  // Fetch assignment targets from backend
-  const fetchAssignmentTargets = useCallback(async (): Promise<void> => {
+    // Field Engineers and Experts can assign incidents assigned to them
+    if (userTeam.includes('field') || userTeam.includes('expert')) {
+      return incident.assigned_to?.id === user.id
+    }
+
+    return false
+  }
+
+  // Get assignment data for an incident
+  const getAssignmentData = async (incidentId: string): Promise<any> => {
+    const token = getStoredToken()
+    if (!token) return null
+
+    try {
+      const formData = new FormData()
+      formData.append('incident_id', incidentId)
+
+      const response = await fetch(`${API_BASE_URL}/incident-handler/incident-assignment/${incidentId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        return result
+      }
+    } catch (error) {
+      console.warn(`Assignment API failed for incident ${incidentId}:`, error)
+    }
+
+    return null
+  }
+
+  // Fetch assignment targets
+  const fetchAssignmentTargets = async (): Promise<void> => {
     const token = getStoredToken()
     if (!token) {
       setError('Authentication required')
-      return
-    }
-
-    if (!user) {
       return
     }
 
@@ -216,192 +214,194 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch users: ${response.status} ${response.statusText}`)
+        throw new Error(`Failed to fetch users: ${response.status}`)
       }
 
-      const result: ApiResponse = await response.json()
+      const result = await response.json()
       const users = result.data || []
 
       if (!Array.isArray(users)) {
-        throw new Error('Invalid users data format from backend')
+        throw new Error('Invalid users data format')
       }
 
-      if (users.length === 0) {
-        throw new Error('No users found in the system')
+      const userTeam = user?.team_name?.toLowerCase() || ''
+      let assignableRoles: string[] = []
+
+      if (userTeam.includes('handler')) {
+        assignableRoles = ['field', 'engineer', 'expert']
+      } else if (userTeam.includes('field') || userTeam.includes('expert')) {
+        assignableRoles = ['handler']
+      } else if (userTeam.includes('admin')) {
+        assignableRoles = ['handler', 'field', 'engineer', 'expert']
       }
 
-      const assignableRoles = getAssignableRoles(user.team || '')
-
-      // Map users to assignment targets with role filtering
-      const targets: AssignmentTarget[] = users
-        .filter((apiUser: ApiUser): boolean => {
-          if (!apiUser.first_name || !apiUser.email) {
-            return false
-          }
-
-          const userTeam = (apiUser.team_name || '').toLowerCase()
-          return assignableRoles.some(role => userTeam.includes(role))
+      const targets = users
+        .filter((apiUser: any) => {
+          if (!apiUser.first_name || !apiUser.email || apiUser.id === user?.id) return false
+          const userTeamName = (apiUser.team_name || '').toLowerCase()
+          return assignableRoles.some(role => userTeamName.includes(role))
         })
-        .map((apiUser: ApiUser): AssignmentTarget => {
-          const fullName = apiUser.first_name && apiUser.last_name
+        .map((apiUser: any) => ({
+          id: apiUser.email,
+          user_id: apiUser.id,
+          name: apiUser.first_name && apiUser.last_name
             ? `${apiUser.first_name} ${apiUser.last_name}`.trim()
-            : apiUser.first_name
-
-          return {
-            id: apiUser.email, // Using email as unique identifier
-            name: fullName,
-            email: apiUser.email,
-            team: apiUser.team_name || 'Unknown Team',
-            team_id: apiUser.team_id || 0
-          }
-        })
+            : apiUser.first_name,
+          email: apiUser.email,
+          team: apiUser.team_name || 'Unknown Team',
+          team_id: apiUser.team_id || 0
+        }))
         .sort((a, b) => a.name.localeCompare(b.name))
 
       setAssignmentTargets(targets)
       setAllUsers(targets)
 
-      // Extract unique teams
       const teams = [...new Set(targets.map(user => user.team).filter(Boolean))].sort()
       setAvailableTeams(teams)
 
-      if (targets.length === 0) {
-        setError('No assignable users found for your role')
-      }
-
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(`Failed to load users: ${errorMessage}`)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load users'
+      setError(errorMessage)
       setAssignmentTargets([])
       setAllUsers([])
     } finally {
       setLoadingTargets(false)
     }
-  }, [user, getAssignableRoles])
+  }
 
-  // Fetch incidents data
-  const fetchData = useCallback(async (): Promise<void> => {
+  // Main data fetching
+  const fetchData = async (showLoader: boolean = true): Promise<void> => {
     try {
-      setLoading(true)
+      if (showLoader) setLoading(true)
       setError(null)
 
       const currentUser = getCurrentUser()
-      if (!currentUser) {
+      if (!currentUser?.id) {
         router.replace('/auth/login')
         return
       }
 
       setUser(currentUser)
 
-      let fetchedIncidents: Incident[] = []
+      const actualUserType = userType || currentUser?.team_name?.toLowerCase() || 'enduser'
+      let fetchedIncidents: ExtendedIncident[] = []
 
-      if (userType?.includes('expert')) {
-        // TODO: Replace with real API call when available
-        fetchedIncidents = EXPERT_TEAM_FAKE_DATA
+      // Fetch incidents based on user type
+      if (actualUserType.includes('expert')) {
+        fetchedIncidents = await fetchExpertTeamIncidents() as ExtendedIncident[]
+      } else if (actualUserType.includes('field') || actualUserType.includes('engineer')) {
+        fetchedIncidents = await fetchFieldEngineerIncidents() as ExtendedIncident[]
+      } else if (actualUserType.includes('manager') || actualUserType.includes('admin')) {
+        fetchedIncidents = await fetchManagerIncidents() as ExtendedIncident[]
+      } else if (actualUserType.includes('handler')) {
+        fetchedIncidents = await fetchHandlerIncidents() as ExtendedIncident[]
       } else {
-        fetchedIncidents = await fetchAllIncidentsForAssignment()
+        fetchedIncidents = await fetchEndUserIncidents() as ExtendedIncident[]
       }
 
-      // Sort by creation date - latest first
+      // Sort by creation date
       const sortedIncidents = fetchedIncidents.sort((a, b) =>
-        new Date(getCreatedAt(b)).getTime() - new Date(getCreatedAt(a)).getTime()
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
 
-      setIncidents(sortedIncidents)
-      setFilteredIncidents(sortedIncidents)
+      // Enhance with assignment data
+      const enhancedIncidents = await Promise.all(
+        sortedIncidents.map(async (incident): Promise<ExtendedIncident> => {
+          const assignmentInfo = await getAssignmentData(incident.id.toString())
+
+          let assignedTo = null
+          let assignedBy = null
+
+          if (assignmentInfo?.success && assignmentInfo.data) {
+            if (assignmentInfo.data.to) {
+              assignedTo = {
+                id: assignmentInfo.data.to,
+                name: assignmentInfo.data.assignee_name || 'Unknown User',
+                email: assignmentInfo.data.assignee_email || '',
+                team_name: assignmentInfo.data.assignee_team || '',
+                team_id: assignmentInfo.data.assignee_team_id || 0
+              }
+            }
+
+            if (assignmentInfo.data.from) {
+              assignedBy = {
+                id: assignmentInfo.data.from,
+                name: assignmentInfo.data.assigner_name || 'Unknown User'
+              }
+            }
+          } else {
+            // Fallback to basic incident data
+            if (incident.assigned_to_id && incident.assigned_to_id !== 0) {
+              assignedTo = {
+                id: incident.assigned_to_id,
+                name: incident.assigned_to?.name || `User ${incident.assigned_to_id}`,
+                email: incident.assigned_to?.email || '',
+                team_name: incident.assigned_to?.team_name || '',
+                team_id: incident.assigned_to?.team_id || 0
+              }
+            }
+          }
+
+          return {
+            ...incident,
+            assigned_to: assignedTo,
+            assigned_by: assignedBy
+          }
+        })
+      )
+
+      setIncidents(enhancedIncidents)
+
+      const userTeam = currentUser.team_name?.toLowerCase() || ''
+
+      if (userTeam.includes('handler')) {
+        // Handler logic
+        const myActive = enhancedIncidents.filter(incident => {
+          const isUnassigned = !incident.assigned_to
+          const isAssignedToMe = incident.assigned_to?.id === currentUser.id
+          const wasAssignedByMe = incident.assigned_by?.id === currentUser.id
+          return isAssignedToMe || (isUnassigned && wasAssignedByMe)
+        })
+
+        const assignedToOthers = enhancedIncidents.filter(incident => {
+          const wasAssignedByMe = incident.assigned_by?.id === currentUser.id
+          const isAssignedToSomeoneElse = incident.assigned_to && incident.assigned_to.id !== currentUser.id
+          return wasAssignedByMe && isAssignedToSomeoneElse
+        })
+
+        setMyActiveIncidents(myActive)
+        setAssignedToOthersIncidents(assignedToOthers)
+        setFilteredIncidents(activeTab === 'active' ? myActive : assignedToOthers)
+      } else {
+        // Field Engineer / Expert logic
+        setMyActiveIncidents(enhancedIncidents)
+        setAssignedToOthersIncidents([])
+        setFilteredIncidents(enhancedIncidents)
+      }
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(`Failed to load incidents: ${errorMessage}`)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load incidents'
+      setError(errorMessage)
       setIncidents([])
       setFilteredIncidents([])
     } finally {
-      setLoading(false)
+      if (showLoader) setLoading(false)
     }
-  }, [router, userType, getCreatedAt])
+  }
 
-  // Filter incidents based on current filters
-  const applyFilters = useCallback((): void => {
-    let filtered = [...incidents]
-
-    // Apply assignment status filter
-    if (statusFilter === 'unassigned') {
-      filtered = filtered.filter(incident => !isAssigned(incident))
-    } else if (statusFilter === 'assigned') {
-      filtered = filtered.filter(incident => isAssigned(incident))
-    } else if (statusFilter !== 'all') {
-      filtered = filtered.filter(incident => getStatus(incident) === statusFilter)
-    }
-
-    // Apply priority filter
-    if (priorityFilter !== 'all') {
-      filtered = filtered.filter(incident =>
-        getPriorityName(incident).toLowerCase() === priorityFilter.toLowerCase()
-      )
-    }
-
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(incident =>
-        getShortDescription(incident).toLowerCase().includes(term) ||
-        getIncidentNumber(incident).toLowerCase().includes(term) ||
-        getCategoryName(incident).toLowerCase().includes(term) ||
-        getCallerName(incident).toLowerCase().includes(term)
-      )
-    }
-
-    // Sort by creation date - latest first
-    filtered.sort((a, b) => new Date(getCreatedAt(b)).getTime() - new Date(getCreatedAt(a)).getTime())
-
-    setFilteredIncidents(filtered)
-    setCurrentPage(1)
-  }, [
-    incidents,
-    statusFilter,
-    priorityFilter,
-    searchTerm,
-    isAssigned,
-    getStatus,
-    getPriorityName,
-    getShortDescription,
-    getIncidentNumber,
-    getCategoryName,
-    getCallerName,
-    getCreatedAt
-  ])
-
-  // Handle team selection
-  const handleTeamChange = useCallback((selectedTeam: string): void => {
-    setSelectedTeam(selectedTeam)
-    setSelectedAssignee('')
-
-    if (!selectedTeam) {
-      setAssignmentTargets(allUsers)
+  // Handle tab change
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab)
+    if (tab === 'active') {
+      setFilteredIncidents(myActiveIncidents)
     } else {
-      const filteredUsers = allUsers.filter(user => user.team === selectedTeam)
-      setAssignmentTargets(filteredUsers)
+      setFilteredIncidents(assignedToOthersIncidents)
     }
-  }, [allUsers])
-
-  // Handle assignment modal
-  const handleAssignIncident = useCallback((incident: Incident): void => {
-    setSelectedIncident(incident)
-    setSelectedAssignee('')
-    setSelectedTeam('')
-    setAssignmentNotes('')
-    setError(null)
-    setSuccess(null)
-    setAssignmentTargets(allUsers)
-    setShowAssignModal(true)
-
-    // Fetch users if not loaded
-    if (allUsers.length === 0) {
-      fetchAssignmentTargets()
-    }
-  }, [allUsers, fetchAssignmentTargets])
+    setCurrentPage(1)
+  }
 
   // Handle assignment submission
-  const handleSaveAssignment = useCallback(async (): Promise<void> => {
+  const handleSaveAssignment = async (): Promise<void> => {
     if (!selectedIncident || !selectedAssignee || !user) {
       setError('Missing required assignment data')
       return
@@ -423,28 +423,17 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       setAssigning(true)
       setError(null)
 
-      const fromUserId = parseInt(user.id)
-      const incidentId = parseInt(selectedIncident.id.toString())
-
-      if (isNaN(fromUserId) || isNaN(incidentId)) {
-        throw new Error('Invalid user or incident ID')
-      }
-
-      const assignmentData: AssignmentPayload = {
-        user_id: fromUserId,
-        incident_id: incidentId,
-        from: fromUserId,
-        to: assignee.team_id,
-        assignee_email: assignee.email,
-        assignee_name: assignee.name,
-        notes: assignmentNotes.trim() || null
+      const assignmentData = {
+        user_id: user.id,
+        incident_id: parseInt(selectedIncident.id.toString()),
+        from: user.id,
+        to: assignee.user_id
       }
 
       const response = await fetch(`${API_BASE_URL}/incident-handler/assign-incident`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(assignmentData)
@@ -452,46 +441,9 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
 
       if (!response.ok) {
         const errorText = await response.text()
-        let errorMessage = `Assignment failed: ${response.status}`
-
-        try {
-          const errorData = JSON.parse(errorText)
-          if (errorData.message) {
-            errorMessage = errorData.message
-          }
-          if (errorData.data) {
-            const validationErrors = Object.entries(errorData.data)
-              .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
-              .join('; ')
-            errorMessage += ` - ${validationErrors}`
-          }
-        } catch {
-          errorMessage += ` - ${errorText}`
-        }
-
-        throw new Error(errorMessage)
+        throw new Error(`Assignment failed: ${response.status}`)
       }
 
-      // Update local state
-      const updatedIncident: Incident = {
-        ...selectedIncident,
-        assigned_to: {
-          ...selectedIncident.assigned_to,
-          id: assignee.team_id,
-          name: assignee.name.split(' ')[0],
-          last_name: assignee.name.split(' ').slice(1).join(' ') || null,
-          email: assignee.email,
-          team_id: assignee.team_id
-        } as any,
-        status: 'in_progress',
-        updated_at: new Date().toISOString()
-      }
-
-      const updatedIncidents = incidents
-        .map(incident => incident.id === selectedIncident.id ? updatedIncident : incident)
-        .sort((a, b) => new Date(getCreatedAt(b)).getTime() - new Date(getCreatedAt(a)).getTime())
-
-      setIncidents(updatedIncidents)
       setShowAssignModal(false)
       setSelectedIncident(null)
       setSelectedAssignee('')
@@ -499,7 +451,9 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
 
       setSuccess(`Incident ${getIncidentNumber(selectedIncident)} successfully assigned to ${assignee.name}`)
 
-      // Clear success message after 5 seconds
+      // Refresh data
+      setTimeout(() => fetchData(false), 500)
+      setTimeout(() => fetchData(true), 2000)
       setTimeout(() => setSuccess(null), 5000)
 
     } catch (error) {
@@ -508,30 +462,26 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
     } finally {
       setAssigning(false)
     }
-  }, [
-    selectedIncident,
-    selectedAssignee,
-    user,
-    assignmentTargets,
-    assignmentNotes,
-    incidents,
-    getCreatedAt,
-    getIncidentNumber
-  ])
+  }
 
-  const handleBackToDashboard = useCallback((): void => {
-    if (onBack) {
-      onBack()
-    } else if (user) {
-      const dashboardRoute = getUserDashboard(user.team)
-      router.push(dashboardRoute)
+  // Filter incidents (search only)
+  useEffect(() => {
+    const baseIncidents = activeTab === 'active' ? myActiveIncidents : assignedToOthersIncidents
+    let filtered = [...baseIncidents]
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(incident =>
+        incident.short_description?.toLowerCase().includes(term) ||
+        getIncidentNumber(incident).toLowerCase().includes(term) ||
+        getCategoryName(incident).toLowerCase().includes(term) ||
+        getCallerName(incident).toLowerCase().includes(term)
+      )
     }
-  }, [onBack, user, router])
 
-  const handleRefresh = useCallback((): void => {
-    fetchData()
-    fetchAssignmentTargets()
-  }, [fetchData, fetchAssignmentTargets])
+    setFilteredIncidents(filtered)
+    setCurrentPage(1)
+  }, [myActiveIncidents, assignedToOthersIncidents, activeTab, searchTerm])
 
   // Auto-clear alerts
   useEffect(() => {
@@ -548,44 +498,84 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       return
     }
     fetchData()
-  }, [router, fetchData])
+  }, [])
+
+  // Auto-refresh data
+  useEffect(() => {
+    if (!user || loading) return
+
+    const interval = setInterval(() => {
+      fetchData(false)
+    }, REFRESH_INTERVAL)
+
+    return () => clearInterval(interval)
+  }, [user, loading])
 
   // Fetch assignment targets when user is loaded
   useEffect(() => {
     if (user && !loadingTargets && allUsers.length === 0) {
       fetchAssignmentTargets()
     }
-  }, [user, loadingTargets, allUsers.length, fetchAssignmentTargets])
+  }, [user, loadingTargets, allUsers.length])
 
-  // Apply filters when dependencies change
-  useEffect(() => {
-    applyFilters()
-  }, [applyFilters])
+  // Navigation handlers
+  const handleBackToDashboard = (): void => {
+    if (onBack) {
+      onBack()
+    } else if (user && user.team_name) {
+      const dashboardRoute = getUserDashboard(user.team_name)
+      router.push(dashboardRoute)
+    }
+  }
 
-  // Memoized values
-  const totalPages = useMemo(() =>
-    Math.ceil(filteredIncidents.length / ITEMS_PER_PAGE),
-    [filteredIncidents.length]
-  )
+  const handleRefresh = (): void => {
+    fetchData()
+    if (allUsers.length === 0) {
+      fetchAssignmentTargets()
+    }
+  }
 
-  const currentIncidents = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-    return filteredIncidents.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [filteredIncidents, currentPage])
+  const handleAssignIncident = (incident: ExtendedIncident): void => {
+    if (!canManageIncident(incident)) {
+      setError('You do not have permission to assign this incident')
+      return
+    }
 
-  const selectedAssigneeData = useMemo(() =>
-    assignmentTargets.find(t => t.id === selectedAssignee),
-    [assignmentTargets, selectedAssignee]
-  )
+    setSelectedIncident(incident)
+    setSelectedAssignee('')
+    setSelectedTeam('')
+    setAssignmentNotes('')
+    setError(null)
+    setSuccess(null)
+    setAssignmentTargets(allUsers)
+    setShowAssignModal(true)
 
-  const canAssign = useMemo(() =>
-    !assigning &&
-    !loadingTargets &&
-    selectedAssignee &&
-    selectedAssignee !== 'undefined' &&
-    !!selectedAssigneeData,
-    [assigning, loadingTargets, selectedAssignee, selectedAssigneeData]
-  )
+    if (allUsers.length === 0) {
+      fetchAssignmentTargets()
+    }
+  }
+
+  const handleTeamChange = (selectedTeam: string): void => {
+    setSelectedTeam(selectedTeam)
+    setSelectedAssignee('')
+
+    if (!selectedTeam) {
+      setAssignmentTargets(allUsers)
+    } else {
+      const filteredUsers = allUsers.filter(user => user.team === selectedTeam)
+      setAssignmentTargets(filteredUsers)
+    }
+  }
+
+  // Pagination
+  const totalPages = Math.ceil(filteredIncidents.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const currentIncidents = filteredIncidents.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  const selectedAssigneeData = assignmentTargets.find(t => t.id === selectedAssignee)
+  const canAssign = !assigning && !loadingTargets && selectedAssignee && selectedAssignee !== 'undefined' && !!selectedAssigneeData
+
+  const isHandler = user?.team_name?.toLowerCase().includes('handler')
 
   if (loading) {
     return (
@@ -601,26 +591,27 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
   }
 
   return (
-    <>
+    <div>
       <Container fluid>
-        {/* Header */}
         <Row>
           <Col xs={12}>
             <Card className="mb-4 mt-4">
               <CardBody>
                 <div className="d-flex justify-content-between align-items-center">
                   <div>
-                    <h4 className="mb-1">🎯 Assign Incidents</h4>
+                    <h4 className="mb-1">Incident Management</h4>
                     <small className="text-muted">
-                      {loadingTargets ?
-                        'Loading users...' :
-                        `${allUsers.length} users available for assignment`
-                      }
+                      {user?.team_name && `Role: ${user.team_name}`}
                     </small>
                   </div>
-                  <Button color="secondary" size="sm" onClick={handleBackToDashboard}>
-                    ← Back to Dashboard
-                  </Button>
+                  <div className="d-flex gap-2">
+                    <Button color="outline-primary" size="sm" onClick={handleRefresh}>
+                      🔄 Refresh
+                    </Button>
+                    <Button color="secondary" size="sm" onClick={handleBackToDashboard}>
+                      ← Back to Dashboard
+                    </Button>
+                  </div>
                 </div>
               </CardBody>
             </Card>
@@ -661,161 +652,195 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
           </Row>
         )}
 
-        {/* Filters */}
+        {/* Tab Navigation for Handlers */}
+        {isHandler && (
+          <Row>
+            <Col xs={12}>
+              <Card>
+                <CardHeader>
+                  <Nav tabs>
+                    <NavItem>
+                      <NavLink
+                        className={activeTab === 'active' ? 'active' : ''}
+                        onClick={() => handleTabChange('active')}
+                        href="#"
+                        style={{ cursor: 'pointer' }}
+                      >
+                        My Active Tasks ({myActiveIncidents.length})
+                      </NavLink>
+                    </NavItem>
+                    <NavItem>
+                      <NavLink
+                        className={activeTab === 'assigned' ? 'active' : ''}
+                        onClick={() => handleTabChange('assigned')}
+                        href="#"
+                        style={{ cursor: 'pointer' }}
+                      >
+                        Assigned to Others ({assignedToOthersIncidents.length})
+                      </NavLink>
+                    </NavItem>
+                  </Nav>
+                </CardHeader>
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        {/* Search Only */}
         <Row>
           <Col xs={12}>
-            <Card>
-              <CardHeader>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5>🔍 Filter Incidents</h5>
-                  <Button color="outline-primary" size="sm" onClick={handleRefresh}>
-                    🔄 Refresh
-                  </Button>
-                </div>
-              </CardHeader>
+            <Card className="mb-3">
               <CardBody>
-                <Row>
-                  <Col md={4}>
-                    <FormGroup>
-                      <Label>Search</Label>
-                      <Input
-                        type="text"
-                        placeholder="Search incidents..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                      />
-                    </FormGroup>
-                  </Col>
-                  <Col md={4}>
-                    <FormGroup>
-                      <Label>Assignment Status</Label>
-                      <Input
-                        type="select"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <Label className="form-label">🔍 Search Incidents</Label>
+                    <Input
+                      type="text"
+                      placeholder="Search by incident number, description, category, or caller name..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-md-6 d-flex align-items-end">
+                    {searchTerm && (
+                      <Button
+                        color="outline-secondary"
+                        size="sm"
+                        onClick={() => setSearchTerm('')}
                       >
-                        <option value="all">All Incidents</option>
-                        <option value="unassigned">Unassigned Only</option>
-                        <option value="assigned">Assigned Only</option>
-                        <option value="pending">Pending</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="resolved">Resolved</option>
-                        <option value="closed">Closed</option>
-                      </Input>
-                    </FormGroup>
-                  </Col>
-                  <Col md={4}>
-                    <FormGroup>
-                      <Label>Priority</Label>
-                      <Input
-                        type="select"
-                        value={priorityFilter}
-                        onChange={(e) => setPriorityFilter(e.target.value)}
-                      >
-                        <option value="all">All Priorities</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                        <option value="critical">Critical</option>
-                      </Input>
-                    </FormGroup>
-                  </Col>
-                </Row>
+                        ✕ Clear Search
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </CardBody>
             </Card>
           </Col>
         </Row>
 
-        {/* Incidents Table */}
+        {/* Main Incidents Table */}
         <Row>
           <Col xs={12}>
             <Card>
               <CardHeader>
-                <h5>📋 Incidents ({filteredIncidents.length} of {incidents.length})</h5>
+                <div className="d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">
+                    📋 {activeTab === 'active' ? 'My Active Tasks' : 'Assigned to Others'}
+                    ({filteredIncidents.length} of {activeTab === 'active' ? myActiveIncidents.length : assignedToOthersIncidents.length})
+                  </h5>
+                  {activeTab === 'assigned' && (
+                    <Badge color="info" className="p-2">
+                      👁️ Read-Only Mode
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardBody>
                 {filteredIncidents.length === 0 ? (
                   <div className="text-center py-5">
                     <p className="text-muted">
-                      {incidents.length === 0 ? 'No incidents found' : 'No incidents match the current filters'}
+                      {activeTab === 'active' ? 'No active incidents assigned to you' : 'No incidents assigned to others'}
                     </p>
                     <Button color="primary" onClick={handleRefresh}>🔄 Refresh</Button>
                   </div>
                 ) : (
-                  <>
+                  <div>
                     <div className="table-responsive">
                       <table className="table table-hover">
                         <thead className="table-light">
                           <tr>
                             <th>Incident</th>
+                            <th>Description</th>
                             <th>Category</th>
                             <th>Priority</th>
                             <th>Status</th>
-                            <th>Assignment</th>
+                            <th>Assigned To</th>
                             <th>Created</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {currentIncidents.map((incident) => (
-                            <tr key={incident.id}>
-                              <td>
-                                <div>
-                                  <div className="fw-medium">{getIncidentNumber(incident)}</div>
-                                  <small className="text-muted">👤 {getCallerName(incident)}</small>
-                                </div>
-                              </td>
-                              <td>
-                                <div className="fw-medium">{getCategoryName(incident)}</div>
-                              </td>
-                              <td>
-                                <Badge style={{
-                                  backgroundColor: getPriorityColor(getPriorityName(incident)),
-                                  color: 'white'
-                                }}>
-                                  {getPriorityName(incident)}
-                                </Badge>
-                              </td>
-                              <td>
-                                <Badge style={{
-                                  backgroundColor: getStatusColor(getStatus(incident)),
-                                  color: 'white'
-                                }}>
-                                  {getStatus(incident).replace('_', ' ')}
-                                </Badge>
-                              </td>
-                              <td>
-                                {isAssigned(incident) ? (
+                          {currentIncidents.map((incident) => {
+                            const canManage = canManageIncident(incident)
+                            const isReadOnly = activeTab === 'assigned'
+                            const assignedToName = getAssignedToName(incident)
+
+                            return (
+                              <tr key={incident.id}>
+                                <td>
                                   <div>
-                                    <span className="fw-medium text-success">{getAssignedToName(incident)}</span>
+                                    <div className="fw-medium">{getIncidentNumber(incident)}</div>
+                                    <small className="text-muted">👤 {getCallerName(incident)}</small>
                                   </div>
-                                ) : (
+                                </td>
+                                <td>
+                                  <div className="text-truncate" style={{ maxWidth: '200px' }}>
+                                    {incident.short_description || 'No description'}
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="fw-medium">{getCategoryName(incident)}</div>
+                                </td>
+                                <td>
+                                  <Badge style={{
+                                    backgroundColor: getPriorityColor(getPriorityName(incident)),
+                                    color: 'white'
+                                  }}>
+                                    {getPriorityName(incident)}
+                                  </Badge>
+                                </td>
+                                <td>
+                                  <Badge style={{
+                                    backgroundColor: getStatusColor(getStatus(incident)),
+                                    color: 'white'
+                                  }}>
+                                    {getStatus(incident).replace('_', ' ')}
+                                  </Badge>
+                                </td>
+                                <td>
                                   <div>
-                                    <span className="text-danger fw-medium">❌ Unassigned</span>
-                                    <br />
-                                    <small className="text-muted">Needs assignment</small>
+                                    <span className={`fw-medium ${incident.assigned_to ? 'text-success' : 'text-warning'}`}>
+                                      {assignedToName}
+                                    </span>
+                                    {incident.assigned_by && (
+                                      <div>
+                                        <small className="text-muted">
+                                          By: {incident.assigned_by.name}
+                                        </small>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </td>
-                              <td>
-                                <small>{formatDate(getCreatedAt(incident))}</small>
-                              </td>
-                              <td>
-                                <Button
-                                  color={isAssigned(incident) ? "warning" : "primary"}
-                                  size="sm"
-                                  onClick={() => handleAssignIncident(incident)}
-                                  disabled={loadingTargets}
-                                >
-                                  {loadingTargets ? (
-                                    <div className="spinner-border spinner-border-sm"></div>
+                                </td>
+                                <td>
+                                  <small>{formatDate(incident.created_at)}</small>
+                                </td>
+                                <td>
+                                  {canManage ? (
+                                    <Button
+                                      color="primary"
+                                      size="sm"
+                                      onClick={() => handleAssignIncident(incident)}
+                                      disabled={loadingTargets}
+                                    >
+                                      {loadingTargets ? (
+                                        <div className="spinner-border spinner-border-sm"></div>
+                                      ) : (
+                                        '📋 Assign'
+                                      )}
+                                    </Button>
+                                  ) : isReadOnly ? (
+                                    <Badge color="info" className="p-2">
+                                      👁️ Read Only
+                                    </Badge>
                                   ) : (
-                                    isAssigned(incident) ? 'Reassign' : 'Assign'
+                                    <Badge color="secondary" className="p-2">
+                                      🔒 No Permission
+                                    </Badge>
                                   )}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -863,7 +888,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                         </ButtonGroup>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </CardBody>
             </Card>
@@ -874,36 +899,46 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       {/* Assignment Modal */}
       <Modal isOpen={showAssignModal} toggle={() => setShowAssignModal(false)} size="lg">
         <ModalHeader toggle={() => setShowAssignModal(false)}>
-          Assign Incident - {selectedIncident ? getIncidentNumber(selectedIncident) : ''}
+          🎯 Assign Incident - {selectedIncident ? getIncidentNumber(selectedIncident) : ''}
         </ModalHeader>
         <ModalBody>
           {selectedIncident && (
-            <>
-              {/* Incident Details Summary */}
-              <div className="mb-3 p-3 bg-light rounded">
-                <h6 className="mb-2">Incident Details:</h6>
-                <div><strong>Number:</strong> {getIncidentNumber(selectedIncident)}</div>
-                <div><strong>Description:</strong> {getShortDescription(selectedIncident)}</div>
-                <div><strong>Caller:</strong> {getCallerName(selectedIncident)}</div>
-                <div><strong>Priority:</strong>
-                  <Badge
-                    className="ms-1"
-                    style={{
-                      backgroundColor: getPriorityColor(getPriorityName(selectedIncident)),
-                      color: 'white'
-                    }}
-                  >
-                    {getPriorityName(selectedIncident)}
-                  </Badge>
+            <div>
+              {/* Incident Details */}
+              <div className="bg-light p-3 rounded mb-4">
+                <h6 className="fw-bold mb-2">📋 Incident Details</h6>
+                <div className="row">
+                  <div className="col-md-6">
+                    <small className="text-muted">Incident Number:</small>
+                    <div className="fw-medium">{getIncidentNumber(selectedIncident)}</div>
+                  </div>
+                  <div className="col-md-6">
+                    <small className="text-muted">Category:</small>
+                    <div className="fw-medium">{getCategoryName(selectedIncident)}</div>
+                  </div>
+                  <div className="col-md-6 mt-2">
+                    <small className="text-muted">Priority:</small>
+                    <div>
+                      <Badge style={{
+                        backgroundColor: getPriorityColor(getPriorityName(selectedIncident)),
+                        color: 'white'
+                      }}>
+                        {getPriorityName(selectedIncident)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="col-md-6 mt-2">
+                    <small className="text-muted">Description:</small>
+                    <div className="fw-medium">{selectedIncident.short_description || 'No description'}</div>
+                  </div>
                 </div>
-                {isAssigned(selectedIncident) && (
-                  <div><strong>Currently Assigned To:</strong> {getAssignedToName(selectedIncident)}</div>
-                )}
               </div>
 
               <Form>
                 <FormGroup>
-                  <Label className="fw-bold">Select Team First (Optional)</Label>
+                  <Label className="fw-bold">
+                    🏢 Select Team First (Optional)
+                  </Label>
                   <Input
                     type="select"
                     value={selectedTeam}
@@ -911,10 +946,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                     disabled={loadingTargets}
                   >
                     <option value="">
-                      {loadingTargets ?
-                        'Loading teams...' :
-                        `All Teams (${allUsers.length} users)`
-                      }
+                      {loadingTargets ? 'Loading teams...' : `All Teams (${allUsers.length} users)`}
                     </option>
                     {availableTeams.map(team => {
                       const teamUserCount = allUsers.filter(user => user.team === team).length
@@ -925,13 +957,12 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                       )
                     })}
                   </Input>
-                  <small className="text-muted mt-1">
-                    Filter by team to narrow down assignee options
-                  </small>
                 </FormGroup>
 
                 <FormGroup>
-                  <Label className="fw-bold">Select Assignee *</Label>
+                  <Label className="fw-bold">
+                    👤 Select Assignee *
+                  </Label>
                   {loadingTargets ? (
                     <div className="text-center p-3 border rounded">
                       <div className="spinner-border spinner-border-sm me-2"></div>
@@ -939,80 +970,45 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                     </div>
                   ) : assignmentTargets.length === 0 ? (
                     <div className="text-center p-3 text-muted border rounded">
-                      {selectedTeam ? (
-                        <>
-                          <div>❌ No users found in "{selectedTeam}" team</div>
-                          <Button
-                            color="outline-secondary"
-                            size="sm"
-                            className="mt-2"
-                            onClick={() => handleTeamChange('')}
-                          >
-                            Show All Teams
-                          </Button>
-                        </>
-                      ) : allUsers.length === 0 ? (
-                        <>
-                          <div>❌ No users available for assignment</div>
-                          <div className="mt-2">
-                            <small className="text-muted">
-                              This could happen if:
-                              <ul className="mt-1 text-start">
-                                <li>No users with assignable roles exist</li>
-                                <li>API returned empty user list</li>
-                                <li>Network connection issue</li>
-                              </ul>
-                            </small>
-                          </div>
-                          <Button
-                            color="outline-primary"
-                            size="sm"
-                            className="mt-2"
-                            onClick={fetchAssignmentTargets}
-                          >
-                            🔄 Retry Loading Users
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <div>❌ No assignable users found for your role</div>
-                          <div className="mt-2">
-                            <small className="text-muted">
-                              {allUsers.length} users loaded but none match assignable roles
-                            </small>
-                          </div>
-                        </>
-                      )}
+                      <div>❌ No users available for assignment</div>
+                      <div className="small mt-1">
+                        Your role ({user?.team_name}) can only assign to specific teams
+                      </div>
+                      <Button color="outline-primary" size="sm" className="mt-2" onClick={fetchAssignmentTargets}>
+                        🔄 Retry Loading Users
+                      </Button>
                     </div>
                   ) : (
-                    <>
-                      <Input
-                        type="select"
-                        value={selectedAssignee}
-                        onChange={(e) => setSelectedAssignee(e.target.value)}
-                      >
-                        <option value="">
-                          {selectedTeam ?
-                            `Select from ${selectedTeam} team (${assignmentTargets.length} users)...` :
-                            `Select an assignee (${assignmentTargets.length} users)...`
-                          }
+                    <Input
+                      type="select"
+                      value={selectedAssignee}
+                      onChange={(e) => setSelectedAssignee(e.target.value)}
+                    >
+                      <option value="">
+                        {selectedTeam
+                          ? `Select from ${selectedTeam} team (${assignmentTargets.length} users)...`
+                          : `Select an assignee (${assignmentTargets.length} users)...`}
+                      </option>
+                      {assignmentTargets.map(target => (
+                        <option key={target.id} value={target.id}>
+                          {target.name} - {target.team} ({target.email})
                         </option>
-                        {assignmentTargets.map(target => (
-                          <option key={target.id} value={target.id}>
-                            {target.name} - {target.team} ({target.email})
-                          </option>
-                        ))}
-                      </Input>
-                      <small className="text-muted mt-1">
-                        {assignmentTargets.length} users available
-                        {selectedTeam && ` in ${selectedTeam} team`}
-                      </small>
-                    </>
+                      ))}
+                    </Input>
                   )}
                 </FormGroup>
 
+                {selectedAssigneeData && (
+                  <div className="bg-success bg-opacity-10 p-3 rounded mb-3">
+                    <h6 className="text-success mb-2">✅ Selected Assignee</h6>
+                    <div><strong>Name:</strong> {selectedAssigneeData.name}</div>
+                    <div><strong>Team:</strong> {selectedAssigneeData.team}</div>
+                    <div><strong>Email:</strong> {selectedAssigneeData.email}</div>
+                  </div>
+                )}
+
                 <FormGroup>
-                  <Label>Assignment Notes (Optional)</Label>
+                  <Label>📝 Assignment Notes (Optional)</Label>
                   <Input
                     type="textarea"
                     rows={3}
@@ -1025,63 +1021,8 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                     {assignmentNotes.length}/500 characters
                   </small>
                 </FormGroup>
-
-                {/* Assignment Summary */}
-                {selectedAssigneeData && (
-                  <div className="mt-3 p-3 bg-success bg-opacity-10 border border-success rounded">
-                    <h6 className="text-success mb-2">✅ Assignment Summary:</h6>
-                    <div>
-                      <strong>Incident:</strong> {getIncidentNumber(selectedIncident)} will be assigned to
-                    </div>
-                    <div>
-                      <strong>Assignee:</strong> {selectedAssigneeData.name}
-                    </div>
-                    <div>
-                      <strong>Team:</strong> {selectedAssigneeData.team}
-                    </div>
-                    <div>
-                      <strong>Email:</strong> {selectedAssigneeData.email}
-                    </div>
-                    {assignmentNotes.trim() && (
-                      <div>
-                        <strong>Notes:</strong> {assignmentNotes.trim()}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* No users warning */}
-                {!loadingTargets && allUsers.length === 0 && (
-                  <div className="mt-3 p-3 bg-warning bg-opacity-10 border border-warning rounded">
-                    <h6 className="text-warning mb-2">⚠️ No Users Available</h6>
-                    <p className="mb-2">
-                      Unable to load users for assignment. This could be due to:
-                    </p>
-                    <ul className="mb-2">
-                      <li>Network connectivity issues</li>
-                      <li>API authentication problems</li>
-                      <li>No users with assignable roles in the system</li>
-                      <li>API endpoint returning empty data</li>
-                    </ul>
-                    <Button
-                      color="warning"
-                      size="sm"
-                      onClick={fetchAssignmentTargets}
-                      disabled={loadingTargets}
-                    >
-                      {loadingTargets ? (
-                        <>
-                          <span className="spinner-border spinner-border-sm me-1"></span>
-                          Retrying...
-                        </>
-                      ) : (
-                        '🔄 Retry Loading Users'
-                      )}
-                    </Button>
-                  </div>
-                )}
               </Form>
-            </>
+            </div>
           )}
         </ModalBody>
         <ModalFooter>
@@ -1098,17 +1039,17 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
             disabled={!canAssign}
           >
             {assigning ? (
-              <>
+              <div>
                 <span className="spinner-border spinner-border-sm me-2"></span>
                 Assigning...
-              </>
+              </div>
             ) : (
-              'Assign Incident'
+              '🎯 Assign Incident'
             )}
           </Button>
         </ModalFooter>
       </Modal>
-    </>
+    </div>
   )
 }
 

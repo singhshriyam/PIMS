@@ -18,6 +18,17 @@ const UserForm = () => {
 
   const API_BASE_URL = "https://apexwpc.apextechno.co.uk/api";
 
+  // Clear error when user starts typing
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value);
+    if (error) setError("");
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value);
+    if (error) setError("");
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -30,12 +41,9 @@ const UserForm = () => {
     }
 
     try {
-      // Create FormData as API expects
       const formData = new FormData();
       formData.append('email', email.trim());
       formData.append('password', password);
-
-      console.log("Attempting login...");
 
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: "POST",
@@ -49,30 +57,91 @@ const UserForm = () => {
       let data;
       try {
         data = JSON.parse(responseText);
-      } catch (parseError) {
+      } catch {
         throw new Error("Invalid response from server");
       }
 
       if (response.ok && data.success) {
-        // Extract user info from API response
-        const token = data.token || data.access_token || data.data?.token;
-        const user = data.user || data.data?.user || data.data || {};
+        const token = data.token || data.data?.token || "";
 
-        // Store user info in localStorage
+        // Extract user object - API returns data in data.data or just data
+        const user = data.data || data || {};
+
+        console.log('=== DEBUG - API Response Structure ===');
+        console.log('Full API response:', data);
+        console.log('User object:', user);
+        console.log('user.user_id:', user.user_id);
+        console.log('user.name:', user.name);
+        console.log('user.team:', user.team);
+        console.log('user.email:', user.email);
+
+        // Map API fields to our localStorage structure
+        // API provides: user_id, name, team, email
+        // We need: id, first_name, team_name, email
+        const userId = user.user_id || 0;
+        const firstName = user.name ? user.name.trim() : '';
+        const lastName = ''; // API doesn't provide last name separately
+        const teamName = user.team || '';
+        const teamId = user.team_id || 0;
+        const userEmail = user.email || '';
+        const mobile = user.mobile || '';
+        const address = user.address || '';
+        const postcode = user.postcode || '';
+        const createdAt = user.created_at || new Date().toISOString();
+
+        console.log('=== DEBUG - Mapped Values ===');
+        console.log('userId:', userId);
+        console.log('firstName:', firstName);
+        console.log('teamName:', teamName);
+        console.log('userEmail:', userEmail);
+
+        // Store in localStorage with correct mapping
         localStorage.setItem("authToken", token);
-        localStorage.setItem("userId", user?.id || user?.user_id || "");
-        localStorage.setItem("userName", user?.name || user?.username || email.split('@')[0]);
-        localStorage.setItem("userEmail", user?.email || email);
-        localStorage.setItem("userTeam", user?.team || user?.role || "User");
+        localStorage.setItem("userId", userId.toString());
+        localStorage.setItem('userFirstName', firstName);
+        localStorage.setItem('userLastName', lastName);
+        localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('userMobile', mobile);
+        localStorage.setItem('userAddress', address);
+        localStorage.setItem('userPostcode', postcode);
+        localStorage.setItem('userCreatedAt', createdAt);
+        localStorage.setItem('userTeamId', teamId.toString());
+        localStorage.setItem('userTeamName', teamName);
+        localStorage.setItem('userTeam', teamName);
 
-        console.log("Login successful, redirecting...");
+        console.log('=== DEBUG - Stored in localStorage ===');
+        console.log('userId stored:', localStorage.getItem('userId'));
+        console.log('userFirstName stored:', localStorage.getItem('userFirstName'));
+        console.log('userTeamName stored:', localStorage.getItem('userTeamName'));
+        console.log('userEmail stored:', localStorage.getItem('userEmail'));
 
-        // Get dashboard route using userService and redirect
-        const userTeam = user?.team || user?.role || "User";
-        const dashboardRoute = getUserDashboard(userTeam);
-        window.location.href = dashboardRoute;
+        // Verify localStorage was written
+        const verifyToken = localStorage.getItem("authToken");
+        const verifyUserId = localStorage.getItem("userId");
+        const verifyEmail = localStorage.getItem("userEmail");
+        const verifyName = localStorage.getItem("userFirstName");
+
+        if (verifyToken && verifyUserId && verifyUserId !== '0' && verifyEmail && verifyName) {
+          const userTeam = teamName || "User";
+          const dashboardRoute = getUserDashboard(userTeam);
+
+          console.log('=== DEBUG - Routing ===');
+          console.log('userTeam for routing:', userTeam);
+          console.log('dashboardRoute calculated:', dashboardRoute);
+
+          // Use window.location.href for hard redirect to ensure clean state
+          window.location.href = dashboardRoute;
+        } else {
+          console.error('Verification failed:');
+          console.error('verifyToken:', !!verifyToken);
+          console.error('verifyUserId:', verifyUserId);
+          console.error('verifyEmail:', !!verifyEmail);
+          console.error('verifyName:', !!verifyName);
+          throw new Error("Failed to store user data properly");
+        }
 
       } else {
+        console.error('Login failed. Response:', data);
         const errorMessage = data.message || data.error || "Login failed";
         setError(errorMessage);
       }
@@ -122,7 +191,7 @@ const UserForm = () => {
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
               placeholder="Enter your email address"
               disabled={loading}
               autoComplete="email"
@@ -139,7 +208,7 @@ const UserForm = () => {
                 id="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={handlePasswordChange}
                 placeholder="Enter your password"
                 disabled={loading}
                 autoComplete="current-password"
@@ -147,7 +216,7 @@ const UserForm = () => {
               <div
                 className="show-hide"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{ cursor: loading ? 'not-allowed' : 'pointer' }}
+                style={{ cursor: loading ? "not-allowed" : "pointer" }}
               >
                 <span className="show" />
               </div>
@@ -157,11 +226,7 @@ const UserForm = () => {
           {/* Remember Me and Forgot Password */}
           <div className="form-group mb-0">
             <div className="checkbox p-0">
-              <Input
-                id="checkbox1"
-                type="checkbox"
-                disabled={loading}
-              />
+              <Input id="checkbox1" type="checkbox" disabled={loading} />
               <Label className="text-muted" htmlFor="checkbox1">
                 Remember Password
               </Label>

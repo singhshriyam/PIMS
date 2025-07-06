@@ -14,7 +14,7 @@ const UserLogin = memo(() => {
       const dashboardRoute = getUserDashboard(userTeam);
       router.replace(dashboardRoute);
     }
-  }, [router]);
+  }, []);
 
   return (
     <Container fluid className="p-0">

@@ -42,6 +42,11 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   }
 };
 
+// Users
+export async function fetchUsers() {
+  return await apiCall('/users');
+}
+
 // Roles
 export async function fetchRoles() {
   return await apiCall('/roles');
