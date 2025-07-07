@@ -32,9 +32,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <I18nProvider language={lng}>
       <html>
         <head>
-          <link rel="icon" href="/assets/images/favicon.png" type="image/x-icon" />
-          <link rel="shortcut icon" href="/assets/images/favicon.png" type="image/x-icon" />
-          <title>Crocs - Premium Admin Template</title>
+          <link rel="icon" href="/assets/images/logo/apex-logo.png" type="image/x-icon" />
+          <link rel="shortcut icon" href="/assets/images/logo/apex-logo.png" type="image/x-icon" />
+          <title>ApexTechno Water Pollution solution</title>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
           <script async src="https://maps.googleapis.com/maps/api/js?key=your_api_key"></script>
