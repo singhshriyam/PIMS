@@ -11,6 +11,7 @@ interface ActionsTabProps {
   currentUser: any
   masterData: any
   hasFullAccess: boolean
+  isFieldEngineer: boolean
   setError: (error: string | null) => void
   setSuccess: (success: string | null) => void
   safe: (value: any) => string
@@ -23,6 +24,7 @@ const ActionsTab: React.FC<ActionsTabProps> = ({
   currentUser,
   masterData,
   hasFullAccess,
+  isFieldEngineer,
   setError,
   setSuccess,
   safe
@@ -78,7 +80,7 @@ const ActionsTab: React.FC<ActionsTabProps> = ({
     complete: false
   })
 
-  const canEdit = () => hasFullAccess
+  const canEdit = () => hasFullAccess || isFieldEngineer
 
   const debugLog = (action: string, data?: any) => {
     console.log(`[ActionsTab] ${action}:`, data)

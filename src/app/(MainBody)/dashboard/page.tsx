@@ -28,7 +28,7 @@ const DashboardContent = () => {
     const currentUser = getCurrentUser();
     setUser(currentUser);
 
-    const userTeam = currentUser.team || "user";
+    const userTeam = currentUser.team_name || "user";
     const currentPath = window.location.pathname;
 
     // If we have a tab parameter, handle it appropriately
