@@ -12,6 +12,7 @@ export interface Incident {
   asset_id: number | null;
   asset: any | null;
   category_id: number | null;
+  category_name: string;
   category: any | null;
   subcategory_id: number | null;
   subcategory: any | null;

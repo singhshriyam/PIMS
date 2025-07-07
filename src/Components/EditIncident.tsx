@@ -472,7 +472,7 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     }
 
     if (isFieldEngineer()) {
-      tabs.push('evidence', 'action', 'assignment', 'history')
+      tabs.push('evidence', 'actions', 'assignment', 'history')
       return tabs
     }
 

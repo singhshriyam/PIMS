@@ -46,7 +46,7 @@ const AssignmentTab: React.FC<AssignmentTabProps> = ({
 
   // Available teams/roles for assignment
   const availableTeams = [
-    { value: 'handler', label: 'Incident Handler' },
+    { value: 'handler', label: 'Incident Handler', description: 'Coordinating incident resolution' },
     { value: 'field', label: 'Field Engineer', description: 'Field engineers and technicians' },
     { value: 'expert', label: 'Expert Team', description: 'Subject matter experts' },
   ]

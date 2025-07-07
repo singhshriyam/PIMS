@@ -53,23 +53,37 @@ const FieldEngineerDashboard = () => {
   }
 
   const getCategoryName = (incident: Incident) => {
-    return incident.category?.name || 'Uncategorized'
-  }
-
-  const getPriorityName = (incident: Incident) => {
-    return incident.priority?.name || incident.urgency?.name || 'Medium'
+    return incident.category_name || incident.category?.name || 'Uncategorized'
   }
 
   const getStatus = (incident: Incident) => {
     if (incident.incidentstate && typeof incident.incidentstate === 'string') {
       return incident.incidentstate
     }
-    const state = incident.incidentstate?.name?.toLowerCase() || ''
-    if (state === 'new') return 'pending'
-    if (state === 'inprogress') return 'in_progress'
-    if (state === 'resolved') return 'resolved'
-    if (state === 'closed') return 'closed'
-    return 'pending'
+
+    // Get status name from the flat field
+    const stateName = (incident as any).incidentstate_name || incident.incidentstate?.name
+
+    if (!stateName) return 'pending'
+
+    const state = stateName.toLowerCase().trim()
+
+    // Map API status names to display values
+    switch (state) {
+      case 'new':
+        return 'pending'
+      case 'inprogress':
+        return 'in_progress'
+      case 'resolved':
+        return 'resolved'
+      case 'closed':
+        return 'closed'
+      case 'cancelled':
+      case 'canceled':
+        return 'cancelled'
+      default:
+        return 'pending'
+    }
   }
 
   const getShortDescription = (incident: Incident) => {
@@ -241,7 +255,7 @@ const FieldEngineerDashboard = () => {
         </Col>
       </Row>
 
-      {/* Stats */}
+      {/* Stats
       <Row>
         {[
           { value: stats.total, label: 'Total Assignments' },
@@ -260,15 +274,12 @@ const FieldEngineerDashboard = () => {
             </Card>
           </Col>
         ))}
-      </Row>
+      </Row> */}
 
       {/* Filters */}
       <Row>
         <Col xs={12}>
           <Card>
-            <CardHeader>
-              <h5>Filter Assignments</h5>
-            </CardHeader>
             <CardBody>
               <Row>
                 <Col md={6}>
@@ -322,9 +333,8 @@ const FieldEngineerDashboard = () => {
                       <thead>
                         <tr>
                           <th>Incident</th>
+                          <th>Category</th>
                           <th>Description</th>
-                          {/* <th>Category</th> */}
-                          <th>Priority</th>
                           <th>Status</th>
                           <th>Location</th>
                           <th>Date</th>
@@ -341,21 +351,11 @@ const FieldEngineerDashboard = () => {
                                 </span>
                               </div>
                             </td>
+                            <td>{getCategoryName(incident)}</td>
                             <td>
                               <div style={{ maxWidth: '200px' }}>
                                 {getShortDescription(incident)}
                               </div>
-                            </td>
-                            {/* <td>{getCategoryName(incident)}</td> */}
-                            <td>
-                              <Badge
-                                style={{
-                                  backgroundColor: getPriorityColor(getPriorityName(incident)),
-                                  color: 'white'
-                                }}
-                              >
-                                {getPriorityName(incident)}
-                              </Badge>
                             </td>
                             <td>
                               <Badge
@@ -375,7 +375,7 @@ const FieldEngineerDashboard = () => {
                             </td>
                             <td>
                               <Button
-                                color="warning"
+                                color="primary"
                                 size="sm"
                                 onClick={() => handleEditIncident(incident)}
                               >
