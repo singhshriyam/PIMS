@@ -19,6 +19,7 @@ interface AssignmentTabProps {
   userType?: string
   currentUser: any
   hasFullAccess: boolean
+  isFieldEngineer: boolean
   setError: (error: string | null) => void
   setSuccess: (success: string | null) => void
 }
@@ -29,6 +30,7 @@ const AssignmentTab: React.FC<AssignmentTabProps> = ({
   incident,
   currentUser,
   hasFullAccess,
+  isFieldEngineer,
   setError,
   setSuccess
 }) => {
@@ -71,6 +73,8 @@ const AssignmentTab: React.FC<AssignmentTabProps> = ({
         if (userTeam.includes('handler') || userTeam.includes('admin')) {
           assignableRoles = ['handler', 'field', 'engineer', 'expert', 'admin']
         } else if (userTeam.includes('manager')) {
+          assignableRoles = ['handler', 'field', 'engineer', 'expert']
+        } else if (userTeam.includes('field') || userTeam.includes('engineer')) {
           assignableRoles = ['handler', 'field', 'engineer', 'expert']
         }
 
@@ -235,13 +239,13 @@ const AssignmentTab: React.FC<AssignmentTabProps> = ({
   }
 
   useEffect(() => {
-    if (hasFullAccess) {
+    if (hasFullAccess || isFieldEngineer) {
       fetchUsers()
       fetchAssignmentLogs()
     }
-  }, [hasFullAccess, incident])
+  }, [hasFullAccess, isFieldEngineer, incident])
 
-  if (!hasFullAccess) {
+  if (!hasFullAccess && !isFieldEngineer) {
     return (
       <Card>
         <CardHeader>
