@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getStoredToken } from '../../app/(MainBody)/services/userService';
+import { fetchImpacts, fetchIncidentStates } from '../../app/(MainBody)/services/masterService';
 
 // API Configuration
 const API_BASE_URL = 'https://apexwpc.apextechno.co.uk/api';
@@ -38,11 +39,12 @@ interface SLADefinition {
 interface MasterDataItem {
   id: number;
   name: string;
+  value?: string;
 }
 
 interface APIResponse {
   success: boolean;
-  data: SLACondition[] | SLACondition | SLADefinition[] | null;
+  data: SLACondition[] | SLACondition | SLADefinition[] | MasterDataItem[] | null;
   message?: string;
 }
 
@@ -130,42 +132,18 @@ const SLAConditions: React.FC = () => {
     return definition ? definition.name : `(ID: ${id})`;
   };
 
-  const getSLAStateName = (id: number): string => {
-    return id === 1 ? 'Start' : id === 2 ? 'Pause' : id === 3 ? 'Stop' : id === 4 ? 'Complete' : 'Unknown';
-  };
-
-  const getFieldName = (id: number): string => {
-    return id === 1 ? 'Impact' :
-           id === 2 ? 'Incident State' :
-           id === 3 ? 'Priority' :
-           id === 4 ? 'Category' :
-           id === 5 ? 'Urgency' :
-           id === 6 ? 'Assignment Group' : 'Unknown';
-  };
-
-  const getLogicalOperatorName = (id: number): string => {
-    return id === 1 ? 'AND' : id === 2 ? 'OR' : id === 3 ? 'NOT' : 'Unknown';
-  };
-
-  const getImpactName = (id: number): string => {
-    return id === 1 ? 'Low' : id === 2 ? 'Medium' : id === 3 ? 'High' : id === 4 ? 'Critical' : 'Unknown';
-  };
-
-  const getIncidentStateName = (id: number): string => {
-    return id === 1 ? 'New' : id === 2 ? 'In Progress' : id === 3 ? 'Resolved' : id === 4 ? 'Closed' : 'Unknown';
-  };
-
   const getValueName = (condition: SLACondition): string => {
-    const fieldName = getFieldName(condition.sla_incident_field_id);
+    const field = incidentFields.find(f => f.id === condition.sla_incident_field_id);
+    const fieldName = field ? field.name : '';
 
     if ((fieldName.toLowerCase().includes('impact') || fieldName.toLowerCase().includes('priority')) && condition.impact_id) {
-      return getImpactName(condition.impact_id);
+      return getDisplayName(condition.impact_id, impacts);
     }
     if ((fieldName.toLowerCase().includes('state') || fieldName.toLowerCase().includes('status')) && condition.incidentstate_id) {
-      return getIncidentStateName(condition.incidentstate_id);
+      return getDisplayName(condition.incidentstate_id, incidentStates);
     }
-    if (condition.impact_id) return getImpactName(condition.impact_id);
-    if (condition.incidentstate_id) return getIncidentStateName(condition.incidentstate_id);
+    if (condition.impact_id) return getDisplayName(condition.impact_id, impacts);
+    if (condition.incidentstate_id) return getDisplayName(condition.incidentstate_id, incidentStates);
     return 'N/A';
   };
 
@@ -200,73 +178,87 @@ const SLAConditions: React.FC = () => {
   const loadMasterData = async (): Promise<void> => {
     try {
       setLoadingMasterData(true);
-
-      // Load SLA Definitions EXACTLY like SLADefinitions component
       const headers = getHeaders();
       if (!headers) {
         setLoadingMasterData(false);
         return;
       }
 
-      try {
-        const response = await fetch('https://apexwpc.apextechno.co.uk/api/sla-definitions', {
-          method: 'GET',
-          headers: headers
-        });
+      // Load SLA Definitions
+      const slaDefsResponse = await fetch(`${API_BASE_URL}/sla-definitions`, {
+        method: 'GET',
+        headers: headers
+      });
 
-        if (response.status === 401) {
-          showAlert('Authentication failed. Please login again.', 'error');
-          return;
-        }
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log('SLA Definitions loaded:', result); // Debug log
-          setSlaDefinitions(result.data || []);
-        } else {
-          showAlert(`Failed to fetch SLA definitions (Status: ${response.status})`, 'error');
-        }
-      } catch (error) {
-        console.error('Error fetching SLA definitions:', error);
-        showAlert('Error fetching SLA definitions', 'error');
+      if (slaDefsResponse.ok) {
+        const result = await slaDefsResponse.json();
+        console.log('SLA Definitions loaded:', result);
+        setSlaDefinitions(result.data || []);
+      } else {
+        showAlert(`Failed to fetch SLA definitions (Status: ${slaDefsResponse.status})`, 'error');
       }
 
-      // Set all master data with defaults
-      setSlaStates([
-        { id: 1, name: 'Start' },
-        { id: 2, name: 'Pause' },
-        { id: 3, name: 'Stop' },
-        { id: 4, name: 'Complete' }
-      ]);
+      // Load SLA States
+      const slaStatesResponse = await fetch(`${API_BASE_URL}/sla-states`, {
+        method: 'GET',
+        headers: headers
+      });
 
-      setIncidentFields([
-        { id: 1, name: 'Impact' },
-        { id: 2, name: 'Incident State' },
-        { id: 3, name: 'Priority' },
-        { id: 4, name: 'Category' },
-        { id: 5, name: 'Urgency' },
-        { id: 6, name: 'Assignment Group' }
-      ]);
+      if (slaStatesResponse.ok) {
+        const result = await slaStatesResponse.json();
+        console.log('SLA States loaded:', result);
+        setSlaStates(result.data || []);
+      } else {
+        showAlert(`Failed to fetch SLA states (Status: ${slaStatesResponse.status})`, 'error');
+      }
 
-      setLogicalOperators([
-        { id: 1, name: 'AND' },
-        { id: 2, name: 'OR' },
-        { id: 3, name: 'NOT' }
-      ]);
+      // Load Incident Fields
+      const incidentFieldsResponse = await fetch(`${API_BASE_URL}/sla-incident-fields`, {
+        method: 'GET',
+        headers: headers
+      });
 
-      setImpacts([
-        { id: 1, name: 'Low' },
-        { id: 2, name: 'Medium' },
-        { id: 3, name: 'High' },
-        { id: 4, name: 'Critical' }
-      ]);
+      if (incidentFieldsResponse.ok) {
+        const result = await incidentFieldsResponse.json();
+        console.log('Incident Fields loaded:', result);
+        setIncidentFields(result.data || []);
+      } else {
+        showAlert(`Failed to fetch incident fields (Status: ${incidentFieldsResponse.status})`, 'error');
+      }
 
-      setIncidentStates([
-        { id: 1, name: 'New' },
-        { id: 2, name: 'In Progress' },
-        { id: 3, name: 'Resolved' },
-        { id: 4, name: 'Closed' }
-      ]);
+      // Load Logical Operators
+      const logicalOpsResponse = await fetch(`${API_BASE_URL}/logical-operators`, {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (logicalOpsResponse.ok) {
+        const result = await logicalOpsResponse.json();
+        console.log('Logical Operators loaded:', result);
+        setLogicalOperators(result.data || []);
+      } else {
+        showAlert(`Failed to fetch logical operators (Status: ${logicalOpsResponse.status})`, 'error');
+      }
+
+      // Load Impacts from masterService
+      try {
+        const impactsResult = await fetchImpacts();
+        console.log('Impacts loaded:', impactsResult);
+        setImpacts(impactsResult.data || []);
+      } catch (error) {
+        console.error('Error fetching impacts:', error);
+        showAlert('Error fetching impacts', 'error');
+      }
+
+      // Load Incident States from masterService
+      try {
+        const incidentStatesResult = await fetchIncidentStates();
+        console.log('Incident States loaded:', incidentStatesResult);
+        setIncidentStates(incidentStatesResult.data || []);
+      } catch (error) {
+        console.error('Error fetching incident states:', error);
+        showAlert('Error fetching incident states', 'error');
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load master data';
@@ -418,8 +410,8 @@ const SLAConditions: React.FC = () => {
     const searchLower = searchTerm.toLowerCase();
     return (
       getSLADefinitionName(condition.sla_defination_id).toLowerCase().includes(searchLower) ||
-      getSLAStateName(condition.sla_state_id).toLowerCase().includes(searchLower) ||
-      getFieldName(condition.sla_incident_field_id).toLowerCase().includes(searchLower) ||
+      getDisplayName(condition.sla_state_id, slaStates).toLowerCase().includes(searchLower) ||
+      getDisplayName(condition.sla_incident_field_id, incidentFields).toLowerCase().includes(searchLower) ||
       condition.operator.toLowerCase().includes(searchLower) ||
       getValueName(condition).toLowerCase().includes(searchLower)
     );
@@ -529,7 +521,7 @@ const SLAConditions: React.FC = () => {
               </div>
 
               {/* Table */}
-              <div className="table-responsive">
+              <div>
                 <table className="table table-hover mb-0">
                   <thead className="table-light">
                     <tr>
@@ -562,8 +554,8 @@ const SLAConditions: React.FC = () => {
                         <tr key={condition.id}>
                           <td>{condition.id}</td>
                           <td>{getSLADefinitionName(condition.sla_defination_id)}</td>
-                          <td>{getSLAStateName(condition.sla_state_id)}</td>
-                          <td>{getFieldName(condition.sla_incident_field_id)}</td>
+                          <td>{getDisplayName(condition.sla_state_id, slaStates)}</td>
+                          <td>{getDisplayName(condition.sla_incident_field_id, incidentFields)}</td>
                           <td>{condition.operator}</td>
                           <td>{getValueName(condition)}</td>
                           <td>{formatDate(condition.created_at)}</td>
@@ -578,6 +570,12 @@ const SLAConditions: React.FC = () => {
                                     onClick={() => handleView(condition)}
                                   >
                                     View
+                                  </button>
+                                  <button
+                                    className="dropdown-item btn btn-sm w-100 text-dark border-0 bg-transparent px-3 py-2 text-primary"
+                                    onClick={() => handleEdit(condition)}
+                                  >
+                                    Edit
                                   </button>
                                   <button
                                     className="dropdown-item btn btn-sm w-100 text-dark border-0 bg-transparent px-3 py-2 text-danger"
@@ -733,6 +731,118 @@ const SLAConditions: React.FC = () => {
                   </form>
                 </div>
                 <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setCreateModal(false)} disabled={creating}>
+                    Cancel
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={createSLACondition} disabled={creating}>
+                    {creating ? <><span className="spinner-border spinner-border-sm me-2"></span>Creating...</> : 'Create Condition'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Edit Modal */}
+      {editModal && (
+        <>
+          <div className="modal-backdrop fade show"></div>
+          <div className="modal fade show d-block" tabIndex={-1}>
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header bg-warning text-white">
+                  <h5 className="modal-title">Edit SLA Condition</h5>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setEditModal(false)} disabled={updating}></button>
+                </div>
+                <div className="modal-body">
+                  <form>
+                    <div className="row">
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">SLA Definition *</label>
+                          <select className="form-select" name="sla_defination_id" value={formData.sla_defination_id} onChange={handleInputChange} required>
+                            {slaDefinitions.map(def => (
+                              <option key={def.id} value={def.id}>{def.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">SLA State *</label>
+                          <select className="form-select" name="sla_state_id" value={formData.sla_state_id} onChange={handleInputChange} required>
+                            {slaStates.map(state => (
+                              <option key={state.id} value={state.id}>{state.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Incident Field *</label>
+                          <select className="form-select" name="sla_incident_field_id" value={formData.sla_incident_field_id} onChange={handleInputChange} required>
+                            {incidentFields.map(field => (
+                              <option key={field.id} value={field.id}>{field.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Operator *</label>
+                          <select className="form-select" name="operator" value={formData.operator} onChange={handleInputChange} required>
+                            <option value="==">== (Equals)</option>
+                            <option value="!=">!= (Not Equals)</option>
+                            <option value=">">&gt; (Greater Than)</option>
+                            <option value="<">&lt; (Less Than)</option>
+                            <option value=">=">&gt;= (Greater Than or Equal)</option>
+                            <option value="<=">&lt;= (Less Than or Equal)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Impact (if applicable)</label>
+                          <select className="form-select" name="impact_id" value={formData.impact_id || ''} onChange={handleInputChange}>
+                            <option value="">Select Impact</option>
+                            {impacts.map(impact => (
+                              <option key={impact.id} value={impact.id}>{impact.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Incident State (if applicable)</label>
+                          <select className="form-select" name="incidentstate_id" value={formData.incidentstate_id || ''} onChange={handleInputChange}>
+                            <option value="">Select Incident State</option>
+                            {incidentStates.map(state => (
+                              <option key={state.id} value={state.id}>{state.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Logical Operator *</label>
+                          <select className="form-select" name="logical_operator_id" value={formData.logical_operator_id} onChange={handleInputChange} required>
+                            {logicalOperators.map(operator => (
+                              <option key={operator.id} value={operator.id}>{operator.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+                <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setEditModal(false)} disabled={updating}>
                     Cancel
                   </button>
@@ -794,26 +904,13 @@ const SLAConditions: React.FC = () => {
                         <tbody>
                           <tr><td><strong>ID:</strong></td><td>{viewingCondition.id}</td></tr>
                           <tr><td><strong>SLA Definition:</strong></td><td>{getSLADefinitionName(viewingCondition.sla_defination_id)}</td></tr>
-                          <tr><td><strong>SLA State:</strong></td><td>{getSLAStateName(viewingCondition.sla_state_id)}</td></tr>
-                          <tr><td><strong>Field:</strong></td><td>{getFieldName(viewingCondition.sla_incident_field_id)}</td></tr>
+                          <tr><td><strong>SLA State:</strong></td><td>{getDisplayName(viewingCondition.sla_state_id, slaStates)}</td></tr>
+                          <tr><td><strong>Field:</strong></td><td>{getDisplayName(viewingCondition.sla_incident_field_id, incidentFields)}</td></tr>
                           <tr><td><strong>Operator:</strong></td><td>{viewingCondition.operator}</td></tr>
                           <tr><td><strong>Value:</strong></td><td>{getValueName(viewingCondition)}</td></tr>
-                          <tr><td><strong>Logical Operator:</strong></td><td>{getLogicalOperatorName(viewingCondition.logical_operator_id)}</td></tr>
+                          <tr><td><strong>Logical Operator:</strong></td><td>{getDisplayName(viewingCondition.logical_operator_id, logicalOperators)}</td></tr>
                           <tr><td><strong>Created:</strong></td><td>{formatDate(viewingCondition.created_at)}</td></tr>
                           <tr><td><strong>Updated:</strong></td><td>{formatDate(viewingCondition.updated_at)}</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="col-md-6">
-                      <h6>Technical Details</h6>
-                      <table className="table table-borderless table-sm">
-                        <tbody>
-                          <tr><td><strong>Definition ID:</strong></td><td>{viewingCondition.sla_defination_id}</td></tr>
-                          <tr><td><strong>State ID:</strong></td><td>{viewingCondition.sla_state_id}</td></tr>
-                          <tr><td><strong>Field ID:</strong></td><td>{viewingCondition.sla_incident_field_id}</td></tr>
-                          <tr><td><strong>Impact ID:</strong></td><td>{viewingCondition.impact_id || 'N/A'}</td></tr>
-                          <tr><td><strong>Incident State ID:</strong></td><td>{viewingCondition.incidentstate_id || 'N/A'}</td></tr>
-                          <tr><td><strong>Logical Op ID:</strong></td><td>{viewingCondition.logical_operator_id}</td></tr>
                         </tbody>
                       </table>
                     </div>

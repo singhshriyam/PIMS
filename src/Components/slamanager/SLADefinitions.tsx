@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getStoredToken } from '../../app/(MainBody)/services/userService';
 
+// API Configuration
+const API_BASE_URL = 'https://apexwpc.apextechno.co.uk/api';
+
 interface SLADefinition {
   id: number;
   name: string;
@@ -17,12 +20,29 @@ interface SLADefinition {
   sla_group_id: number;
 }
 
+interface MasterDataItem {
+  id: number;
+  name: string;
+}
+
+interface APIResponse {
+  success: boolean;
+  data: SLADefinition[] | SLADefinition | MasterDataItem[] | null;
+  message?: string;
+}
+
 const SLADefinitions = () => {
   const [slaDefinitions, setSlaDefinitions] = useState<SLADefinition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMasterData, setLoadingMasterData] = useState(true);
   const [createModal, setCreateModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
+
+  // Master data states
+  const [slaTypes, setSlaTypes] = useState<MasterDataItem[]>([]);
+  const [slaTargets, setSlaTargets] = useState<MasterDataItem[]>([]);
+
   const [formData, setFormData] = useState({
     name: '',
     sla_type_id: 1,
@@ -42,11 +62,13 @@ const SLADefinitions = () => {
 
   // Helper functions to convert IDs to names
   const getTypeName = (typeId: number): string => {
-    return typeId === 1 ? 'SLA' : typeId === 2 ? 'OLA' : 'Unknown';
+    const type = slaTypes.find(t => t.id === typeId);
+    return type ? type.name : `Unknown (ID: ${typeId})`;
   };
 
   const getTargetName = (targetId: number): string => {
-    return targetId === 1 ? 'Response' : targetId === 2 ? 'Resolution' : 'Unknown';
+    const target = slaTargets.find(t => t.id === targetId);
+    return target ? target.name : `Unknown (ID: ${targetId})`;
   };
 
   // API headers using your userService
@@ -71,6 +93,52 @@ const SLADefinitions = () => {
     setTimeout(() => setAlert({ show: false, message: '', color: '' }), 3000);
   };
 
+  // Load master data from APIs
+  const loadMasterData = async (): Promise<void> => {
+    try {
+      setLoadingMasterData(true);
+      const headers = getHeaders();
+      if (!headers) {
+        setLoadingMasterData(false);
+        return;
+      }
+
+      // Load SLA Types
+      const slaTypesResponse = await fetch(`${API_BASE_URL}/sla-types`, {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (slaTypesResponse.ok) {
+        const result = await slaTypesResponse.json();
+        console.log('SLA Types loaded:', result);
+        setSlaTypes(result.data || []);
+      } else {
+        showAlert(`Failed to fetch SLA types (Status: ${slaTypesResponse.status})`, 'error');
+      }
+
+      // Load SLA Targets
+      const slaTargetsResponse = await fetch(`${API_BASE_URL}/sla-targets`, {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (slaTargetsResponse.ok) {
+        const result = await slaTargetsResponse.json();
+        console.log('SLA Targets loaded:', result);
+        setSlaTargets(result.data || []);
+      } else {
+        showAlert(`Failed to fetch SLA targets (Status: ${slaTargetsResponse.status})`, 'error');
+      }
+
+    } catch (error) {
+      console.error('Error loading master data:', error);
+      showAlert('Error loading master data', 'danger');
+    } finally {
+      setLoadingMasterData(false);
+    }
+  };
+
   // Fetch SLA definitions
   const fetchSLADefinitions = async () => {
     try {
@@ -82,7 +150,7 @@ const SLADefinitions = () => {
         return;
       }
 
-      const response = await fetch('https://apexwpc.apextechno.co.uk/api/sla-definitions', {
+      const response = await fetch(`${API_BASE_URL}/sla-definitions`, {
         method: 'GET',
         headers: headers
       });
@@ -99,7 +167,7 @@ const SLADefinitions = () => {
         showAlert(`Failed to fetch SLA definitions (Status: ${response.status})`, 'danger');
       }
     } catch (error) {
-      showAlert('Error fetching SLA definitions: ' + 'danger');
+      showAlert('Error fetching SLA definitions', 'danger');
     } finally {
       setLoading(false);
     }
@@ -111,7 +179,7 @@ const SLADefinitions = () => {
       const headers = getHeaders();
       if (!headers) return;
 
-      const response = await fetch('https://apexwpc.apextechno.co.uk/api/sla-definitions', {
+      const response = await fetch(`${API_BASE_URL}/sla-definitions`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(formData)
@@ -125,12 +193,13 @@ const SLADefinitions = () => {
       if (response.ok) {
         showAlert('SLA Definition created successfully!');
         setCreateModal(false);
+        resetForm();
         fetchSLADefinitions();
       } else {
         showAlert(`Failed to create SLA definition (Status: ${response.status})`, 'danger');
       }
     } catch (error) {
-      showAlert('Error creating SLA definition: ' + 'danger');
+      showAlert('Error creating SLA definition', 'danger');
     }
   };
 
@@ -142,7 +211,7 @@ const SLADefinitions = () => {
       const headers = getHeaders();
       if (!headers) return;
 
-      const response = await fetch(`https://apexwpc.apextechno.co.uk/api/sla-definitions/${editingId}`, {
+      const response = await fetch(`${API_BASE_URL}/sla-definitions/${editingId}`, {
         method: 'PUT',
         headers: headers,
         body: JSON.stringify(formData)
@@ -157,12 +226,13 @@ const SLADefinitions = () => {
         showAlert('SLA Definition updated successfully!');
         setEditModal(false);
         setEditingId(null);
+        resetForm();
         fetchSLADefinitions();
       } else {
         showAlert(`Failed to update SLA definition (Status: ${response.status})`, 'danger');
       }
     } catch (error) {
-      showAlert('Error updating SLA definition: ' + 'danger');
+      showAlert('Error updating SLA definition', 'danger');
     }
   };
 
@@ -174,7 +244,7 @@ const SLADefinitions = () => {
       const headers = getHeaders();
       if (!headers) return;
 
-      const response = await fetch(`https://apexwpc.apextechno.co.uk/api/sla-definitions/${deletingId}`, {
+      const response = await fetch(`${API_BASE_URL}/sla-definitions/${deletingId}`, {
         method: 'DELETE',
         headers: headers
       });
@@ -193,16 +263,16 @@ const SLADefinitions = () => {
         showAlert(`Failed to delete SLA definition (Status: ${response.status})`, 'danger');
       }
     } catch (error) {
-      showAlert('Error deleting SLA definition: ' + 'danger');
+      showAlert('Error deleting SLA definition', 'danger');
     }
   };
 
-  // Handle create
-  const handleCreate = () => {
+  // Reset form
+  const resetForm = () => {
     setFormData({
       name: '',
-      sla_type_id: 1,
-      sla_target_id: 1,
+      sla_type_id: slaTypes.length > 0 ? slaTypes[0].id : 1,
+      sla_target_id: slaTargets.length > 0 ? slaTargets[0].id : 1,
       days: 0,
       hours: 0,
       minutes: 0,
@@ -211,6 +281,11 @@ const SLADefinitions = () => {
       cost: '0.00',
       sla_group_id: 1
     });
+  };
+
+  // Handle create
+  const handleCreate = () => {
+    resetForm();
     setCreateModal(true);
   };
 
@@ -268,8 +343,29 @@ const SLADefinitions = () => {
 
   // Load data on component mount
   useEffect(() => {
-    fetchSLADefinitions();
+    const initializeData = async () => {
+      await loadMasterData();
+      await fetchSLADefinitions();
+    };
+    initializeData();
   }, []);
+
+  if (loading || loadingMasterData) {
+    return (
+      <div className="container-fluid">
+        <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }}>
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <h5 className="text-muted">
+              {loadingMasterData ? 'Loading Master Data...' : 'Loading SLA Definitions...'}
+            </h5>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container-fluid" style={{ minHeight: '100vh' }}>
@@ -412,8 +508,9 @@ const SLADefinitions = () => {
                           value={formData.sla_type_id}
                           onChange={handleInputChange}
                         >
-                          <option value={1}>SLA</option>
-                          <option value={2}>OLA</option>
+                          {slaTypes.map(type => (
+                            <option key={type.id} value={type.id}>{type.name}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -429,8 +526,9 @@ const SLADefinitions = () => {
                           value={formData.sla_target_id}
                           onChange={handleInputChange}
                         >
-                          <option value={1}>Response</option>
-                          <option value={2}>Resolution</option>
+                          {slaTargets.map(target => (
+                            <option key={target.id} value={target.id}>{target.name}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -583,8 +681,9 @@ const SLADefinitions = () => {
                           value={formData.sla_type_id}
                           onChange={handleInputChange}
                         >
-                          <option value={1}>SLA</option>
-                          <option value={2}>OLA</option>
+                          {slaTypes.map(type => (
+                            <option key={type.id} value={type.id}>{type.name}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -600,8 +699,9 @@ const SLADefinitions = () => {
                           value={formData.sla_target_id}
                           onChange={handleInputChange}
                         >
-                          <option value={1}>Response</option>
-                          <option value={2}>Resolution</option>
+                          {slaTargets.map(target => (
+                            <option key={target.id} value={target.id}>{target.name}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -732,7 +832,6 @@ const SLADefinitions = () => {
                 </div>
                 <div className="modal-body">
                   <p>Are you sure you want to delete this SLA definition?</p>
-                  <p className="text-muted">This action cannot be undone and may affect related SLA conditions.</p>
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setDeleteModal(false)}>

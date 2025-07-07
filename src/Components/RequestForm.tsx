@@ -2,7 +2,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { Container, Row, Col, Card, CardBody, Button, Form, FormGroup, Label, Input, Alert } from 'reactstrap'
-import { getCurrentUser } from '../app/(MainBody)/services/userService'
+import { getCurrentUser, User } from '../app/(MainBody)/services/userService'
 import * as masterService from '../app/(MainBody)/services/masterService'
 
 interface RequestFormProps {
@@ -85,7 +85,7 @@ const RequestForm: React.FC<RequestFormProps> = ({ onBack, initialView = 'form' 
       id: `REQ-${Date.now()}`,
       ...form,
       status: 'Pending',
-      requestedBy: { name: user?.name, email: user?.email, team: user?.team },
+      requestedBy: { name: user?.first_name, email: user?.email, team: user?.team_name },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
