@@ -444,13 +444,13 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
           >
             View
           </Button>
-          <Button
+          {/* <Button
             color="outline-warning"
             size="sm"
             onClick={() => handleEditIncident(incident)}
           >
             Edit
-          </Button>
+          </Button> */}
         </div>
       )
     } else {

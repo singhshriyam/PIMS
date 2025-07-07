@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Row, Col, Button, Form, FormGroup, Label, Input, Alert
 } from 'reactstrap'
@@ -10,7 +10,6 @@ interface DetailsTabProps {
   userType?: string
   currentUser: any
   masterData: any
-  isEndUser: boolean
   isFieldEngineer: boolean
   hasFullAccess: boolean
   canEditIncident: boolean
@@ -19,13 +18,13 @@ interface DetailsTabProps {
   safe: (value: any) => string
   onSave: (updateData: any) => Promise<boolean>
   loading: boolean
+  readOnly?: boolean
 }
 
 const DetailsTab: React.FC<DetailsTabProps> = ({
   incident,
   currentUser,
-  masterData,
-  isEndUser,
+  masterData = { loaded: false, categories: [], contactTypes: [], sites: [], assets: [], impacts: [], urgencies: [], incidentStates: [] },
   isFieldEngineer,
   hasFullAccess,
   canEditIncident,
@@ -33,12 +32,14 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
   setSuccess,
   safe,
   onSave,
-  loading
+  loading,
+  readOnly = false
 }) => {
   const [subcategoriesLoading, setSubcategoriesLoading] = useState(false)
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({})
   const [localSubCategories, setLocalSubCategories] = useState<Array<{id: number, name: string, category_id: number}>>([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [formInitialized, setFormInitialized] = useState(false)
 
   const [form, setForm] = useState({
     shortDescription: '',
@@ -54,68 +55,56 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
     narration: ''
   })
 
-  // Track initial form state for change detection
   const [initialForm, setInitialForm] = useState(form)
 
-  // Load subcategories when category changes
-  const loadSubcategories = async (categoryId: string) => {
+  const loadSubcategories = useCallback(async (categoryId: string) => {
     if (!categoryId) {
       setLocalSubCategories([])
-      setForm(prev => ({ ...prev, subCategoryId: '' }))
       return
     }
 
     setSubcategoriesLoading(true)
     try {
-      console.log('Loading subcategories for category:', categoryId)
       const subcategoriesRes = await fetchSubcategories(categoryId)
-      console.log('Subcategories response:', subcategoriesRes)
-
       const allSubCategories = subcategoriesRes.data || []
       const filteredSubCategories = allSubCategories.filter((sub: any) => {
         return parseInt(sub.category_id) === parseInt(categoryId)
       })
-
-      console.log('Filtered subcategories:', filteredSubCategories.length)
       setLocalSubCategories(filteredSubCategories)
-
     } catch (error: any) {
-      console.error('Error loading subcategories:', error)
       setLocalSubCategories([])
       setError(`Failed to load subcategories: ${error.message}`)
     } finally {
       setSubcategoriesLoading(false)
     }
-  }
+  }, [setError])
 
-  // Check if form has changes
-  const checkForChanges = (newForm: typeof form) => {
+  const checkForChanges = useCallback((newForm: typeof form) => {
+    if (!formInitialized) return false
+
     const hasChanges = Object.keys(newForm).some(key => {
       return newForm[key as keyof typeof newForm] !== initialForm[key as keyof typeof initialForm]
     })
-    setHasUnsavedChanges(hasChanges)
-  }
 
-  // Handle input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setHasUnsavedChanges(hasChanges)
+    return hasChanges
+  }, [formInitialized, initialForm])
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
 
     setForm(prev => {
       const newData = { ...prev, [name]: value }
 
-      // Handle category change
       if (name === 'categoryId') {
-        newData.subCategoryId = '' // Clear subcategory when category changes
-        loadSubcategories(value) // Load new subcategories
+        newData.subCategoryId = ''
+        loadSubcategories(value)
       }
 
-      // Check for changes
       checkForChanges(newData)
-
       return newData
     })
 
-    // Clear validation error for this field
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev }
@@ -123,72 +112,38 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
         return newErrors
       })
     }
-  }
+  }, [formErrors, loadSubcategories, checkForChanges])
 
-  // Form validation
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const errors: {[key: string]: string} = {}
 
-    // Basic validation for all users who can edit
-    if (!form.shortDescription.trim()) {
-      errors.shortDescription = 'Short description is required'
-    } else if (form.shortDescription.trim().length < 10) {
-      errors.shortDescription = 'Short description must be at least 10 characters'
+    // Very minimal validation for all users
+    if (form.shortDescription.trim() && form.shortDescription.trim().length < 3) {
+      errors.shortDescription = 'Too short'
     }
 
-    if (!form.description.trim()) {
-      errors.description = 'Description is required'
-    } else if (form.description.trim().length < 20) {
-      errors.description = 'Description must be at least 20 characters'
-    }
-
-    // Advanced validation only for advanced users
-    if (hasFullAccess) {
-      if (!form.categoryId) {
-        errors.categoryId = 'Category is required'
-      }
-      if (!form.contactTypeId) {
-        errors.contactTypeId = 'Contact type is required'
-      }
-      if (!form.impactId) {
-        errors.impactId = 'Impact is required'
-      }
-      if (!form.urgencyId) {
-        errors.urgencyId = 'Urgency is required'
-      }
-      if (!form.statusId) {
-        errors.statusId = 'Status is required'
-      }
-      if (!form.siteId) {
-        errors.siteId = 'Site is required'
-      }
-      if (!form.assetId) {
-        errors.assetId = 'Asset is required'
-      }
+    if (form.description.trim() && form.description.trim().length < 5) {
+      errors.description = 'Too short'
     }
 
     setFormErrors(errors)
     return Object.keys(errors).length === 0
-  }
+  }, [form])
 
-  // Handle save
-  const handleSave = async () => {
-    if (!canEditIncident || !currentUser?.id) {
+  const handleSave = useCallback(async () => {
+    if (!canEditIncident || !currentUser?.id || readOnly) {
       setError('You do not have permission to edit this incident')
       return
     }
 
-    // Clear previous errors
     setError(null)
     setFormErrors({})
 
-    // Validate form
     if (!validateForm()) {
-      setError('Please fill in all required fields correctly')
+      setError('Please check your input and try again')
       return
     }
 
-    // Check if there are actually changes to save
     if (!hasUnsavedChanges) {
       setSuccess('No changes detected')
       return
@@ -198,16 +153,16 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
     let updateData: any = {
       user_id: currentUser.id,
       incident_id: parseInt(safe(incident.id)),
-      from: currentUser.id,
-      to: currentUser.id,
-      short_description: form.shortDescription.trim(),
-      description: form.description.trim()
+      short_description: form.shortDescription.trim() || incident?.short_description || '',
+      description: form.description.trim() || incident?.description || ''
     }
 
     // Add additional fields for advanced users
     if (hasFullAccess) {
       updateData = {
         ...updateData,
+        from: currentUser.id,
+        to: currentUser.id,
         site_id: form.siteId ? parseInt(form.siteId) : null,
         asset_id: form.assetId ? parseInt(form.assetId) : null,
         category_id: form.categoryId ? parseInt(form.categoryId) : null,
@@ -220,30 +175,25 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
       }
     }
 
-    // Call the save function from parent
     const success = await onSave(updateData)
     if (success) {
-      // Update initial form state to reflect saved changes
       setInitialForm({ ...form })
       setHasUnsavedChanges(false)
       setSuccess('Incident details updated successfully')
     }
-  }
+  }, [canEditIncident, currentUser?.id, readOnly, setError, validateForm, hasUnsavedChanges, setSuccess, hasFullAccess, safe, incident, form, onSave])
 
-  // Get lookup display value
-  const getLookupDisplayValue = (lookupArray: any[], id: any, nameField = 'name'): string => {
+  const getLookupDisplayValue = useCallback((lookupArray: any[], id: any, nameField = 'name'): string => {
     if (!id || !lookupArray || lookupArray.length === 0) return ''
 
     const item = lookupArray.find(item => item.id === parseInt(id.toString()))
     if (!item) return ''
 
-    // Try different name fields
     return item[nameField] || item.name || item.premises || item.street || item.locality || item.description || item.asset_name || `ID: ${id}`
-  }
+  }, [])
 
-  // Initialize form data when incident or master data loads
-  useEffect(() => {
-    if (!masterData.loaded || !incident) return
+  const initializeForm = useCallback(() => {
+    if (!masterData?.loaded || !incident || formInitialized) return
 
     const newForm = {
       shortDescription: safe(incident?.short_description),
@@ -260,16 +210,20 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
     }
 
     setForm(newForm)
-    setInitialForm(newForm) // Set as baseline for change detection
+    setInitialForm(newForm)
     setHasUnsavedChanges(false)
+    setFormInitialized(true)
 
-    // Load subcategories if category is selected
+    // Load subcategories for advanced users
     if (incident?.category_id) {
       loadSubcategories(safe(incident.category_id))
     }
-  }, [incident, masterData.loaded])
+  }, [masterData?.loaded, incident, formInitialized, safe, loadSubcategories])
 
-  // Warn user about unsaved changes
+  useEffect(() => {
+    initializeForm()
+  }, [initializeForm])
+
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -282,60 +236,17 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
 
-  // Render form based on user permissions
   const renderForm = () => {
-    if (isEndUser) {
-      // End users only see and can edit description fields
+    if (!formInitialized) {
       return (
-        <Form>
-          <Row>
-            <Col md={12}>
-              <FormGroup>
-                <Label>Short Description <span className="text-danger">*</span></Label>
-                <Input
-                  type="textarea"
-                  rows="3"
-                  value={form.shortDescription}
-                  onChange={handleInputChange}
-                  name="shortDescription"
-                  className={formErrors.shortDescription ? 'is-invalid' : ''}
-                  placeholder="Brief summary of the incident (minimum 10 characters)..."
-                  maxLength={500}
-                />
-                {formErrors.shortDescription && (
-                  <div className="invalid-feedback">{formErrors.shortDescription}</div>
-                )}
-                <small className="text-muted">{form.shortDescription.length}/500 characters</small>
-              </FormGroup>
-            </Col>
-          </Row>
-          <Row>
-            <Col md={12}>
-              <FormGroup>
-                <Label>Description <span className="text-danger">*</span></Label>
-                <Input
-                  type="textarea"
-                  rows="6"
-                  value={form.description}
-                  onChange={handleInputChange}
-                  name="description"
-                  className={formErrors.description ? 'is-invalid' : ''}
-                  placeholder="Detailed description of the incident (minimum 20 characters)..."
-                  maxLength={2000}
-                />
-                {formErrors.description && (
-                  <div className="invalid-feedback">{formErrors.description}</div>
-                )}
-                <small className="text-muted">{form.description.length}/2000 characters</small>
-              </FormGroup>
-            </Col>
-          </Row>
-        </Form>
+        <div className="text-center py-4">
+          <div className="spinner-border text-primary mb-3"></div>
+          <p>Loading incident details...</p>
+        </div>
       )
     }
 
     if (isFieldEngineer) {
-      // Field engineers see all fields but read-only
       return (
         <Form>
           <Row>
@@ -350,7 +261,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Contact Type</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.contactTypes, form.contactTypeId)}
+                  value={getLookupDisplayValue(masterData?.contactTypes || [], form.contactTypeId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -363,7 +274,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Category</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.categories, form.categoryId)}
+                  value={getLookupDisplayValue(masterData?.categories || [], form.categoryId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -387,7 +298,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Site</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.sites, form.siteId)}
+                  value={getLookupDisplayValue(masterData?.sites || [], form.siteId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -398,7 +309,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Asset</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.assets, form.assetId)}
+                  value={getLookupDisplayValue(masterData?.assets || [], form.assetId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -437,7 +348,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Impact</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.impacts, form.impactId)}
+                  value={getLookupDisplayValue(masterData?.impacts || [], form.impactId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -448,7 +359,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Urgency</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.urgencies, form.urgencyId)}
+                  value={getLookupDisplayValue(masterData?.urgencies || [], form.urgencyId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -461,7 +372,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 <Label>Status</Label>
                 <Input
                   type="text"
-                  value={getLookupDisplayValue(masterData.incidentStates, form.statusId)}
+                  value={getLookupDisplayValue(masterData?.incidentStates || [], form.statusId)}
                   disabled
                   className="bg-light text-dark"
                 />
@@ -484,7 +395,6 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
       )
     }
 
-    // Advanced users get full editable form
     return (
       <Form>
         <Row>
@@ -496,18 +406,19 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
           </Col>
           <Col md={6}>
             <FormGroup>
-              <Label>Contact Type <span className="text-danger">*</span></Label>
+              <Label>Contact Type</Label>
               <Input
                 type="select"
                 value={form.contactTypeId}
                 onChange={handleInputChange}
                 name="contactTypeId"
                 className={formErrors.contactTypeId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Contact Type</option>
-                {masterData.contactTypes.map((type: any) => (
+                {masterData?.contactTypes?.map((type: any) => (
                   <option key={type.id} value={type.id}>{safe(type.name)}</option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.contactTypeId && (
                 <div className="invalid-feedback">{formErrors.contactTypeId}</div>
@@ -518,18 +429,19 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
         <Row>
           <Col md={6}>
             <FormGroup>
-              <Label>Category <span className="text-danger">*</span></Label>
+              <Label>Category</Label>
               <Input
                 type="select"
                 value={form.categoryId}
                 onChange={handleInputChange}
                 name="categoryId"
                 className={formErrors.categoryId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Category</option>
-                {masterData.categories.map((cat: any) => (
+                {masterData?.categories?.map((cat: any) => (
                   <option key={cat.id} value={cat.id}>{safe(cat.name)}</option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.categoryId && (
                 <div className="invalid-feedback">{formErrors.categoryId}</div>
@@ -544,7 +456,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 value={form.subCategoryId}
                 onChange={handleInputChange}
                 name="subCategoryId"
-                disabled={!form.categoryId || subcategoriesLoading}
+                disabled={readOnly || !canEditIncident || !form.categoryId || subcategoriesLoading}
               >
                 <option value="">
                   {subcategoriesLoading
@@ -571,20 +483,21 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
         <Row>
           <Col md={6}>
             <FormGroup>
-              <Label>Site <span className="text-danger">*</span></Label>
+              <Label>Site</Label>
               <Input
                 type="select"
                 value={form.siteId}
                 onChange={handleInputChange}
                 name="siteId"
                 className={formErrors.siteId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Site</option>
-                {masterData.sites.map((site: any) => (
+                {masterData?.sites?.map((site: any) => (
                   <option key={site.id} value={site.id}>
                     {safe(site.name) || safe(site.street) || safe(site.locality) || safe(site.premises) || `Site ${site.id}`}
                   </option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.siteId && (
                 <div className="invalid-feedback">{formErrors.siteId}</div>
@@ -593,20 +506,21 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
           </Col>
           <Col md={6}>
             <FormGroup>
-              <Label>Asset <span className="text-danger">*</span></Label>
+              <Label>Asset</Label>
               <Input
                 type="select"
                 value={form.assetId}
                 onChange={handleInputChange}
                 name="assetId"
                 className={formErrors.assetId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Asset</option>
-                {masterData.assets.map((asset: any) => (
+                {masterData?.assets?.map((asset: any) => (
                   <option key={asset.id} value={asset.id}>
                     {safe(asset.name) || safe(asset.description) || safe(asset.asset_name) || `Asset ${asset.id}`}
                   </option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.assetId && (
                 <div className="invalid-feedback">{formErrors.assetId}</div>
@@ -625,8 +539,9 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 onChange={handleInputChange}
                 name="shortDescription"
                 className={formErrors.shortDescription ? 'is-invalid' : ''}
-                placeholder="Brief summary of the incident (minimum 10 characters)..."
+                placeholder="Brief summary of the incident (minimum 5 characters)..."
                 maxLength={500}
+                disabled={readOnly || !canEditIncident}
               />
               {formErrors.shortDescription && (
                 <div className="invalid-feedback">{formErrors.shortDescription}</div>
@@ -644,8 +559,9 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 onChange={handleInputChange}
                 name="description"
                 className={formErrors.description ? 'is-invalid' : ''}
-                placeholder="Detailed description of the incident (minimum 20 characters)..."
+                placeholder="Detailed description of the incident (minimum 10 characters)..."
                 maxLength={2000}
+                disabled={readOnly || !canEditIncident}
               />
               {formErrors.description && (
                 <div className="invalid-feedback">{formErrors.description}</div>
@@ -657,18 +573,19 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
         <Row>
           <Col md={6}>
             <FormGroup>
-              <Label>Impact <span className="text-danger">*</span></Label>
+              <Label>Impact</Label>
               <Input
                 type="select"
                 value={form.impactId}
                 onChange={handleInputChange}
                 name="impactId"
                 className={formErrors.impactId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Impact</option>
-                {masterData.impacts.map((impact: any) => (
+                {masterData?.impacts?.map((impact: any) => (
                   <option key={impact.id} value={impact.id}>{safe(impact.name)}</option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.impactId && (
                 <div className="invalid-feedback">{formErrors.impactId}</div>
@@ -677,18 +594,19 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
           </Col>
           <Col md={6}>
             <FormGroup>
-              <Label>Urgency <span className="text-danger">*</span></Label>
+              <Label>Urgency</Label>
               <Input
                 type="select"
                 value={form.urgencyId}
                 onChange={handleInputChange}
                 name="urgencyId"
                 className={formErrors.urgencyId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Urgency</option>
-                {masterData.urgencies.map((urgency: any) => (
+                {masterData?.urgencies?.map((urgency: any) => (
                   <option key={urgency.id} value={urgency.id}>{safe(urgency.name)}</option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.urgencyId && (
                 <div className="invalid-feedback">{formErrors.urgencyId}</div>
@@ -699,18 +617,19 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
         <Row>
           <Col md={6}>
             <FormGroup>
-              <Label>Status <span className="text-danger">*</span></Label>
+              <Label>Status</Label>
               <Input
                 type="select"
                 value={form.statusId}
                 onChange={handleInputChange}
                 name="statusId"
                 className={formErrors.statusId ? 'is-invalid' : ''}
+                disabled={readOnly || !canEditIncident}
               >
                 <option value="">Select Status</option>
-                {masterData.incidentStates.map((state: any) => (
+                {masterData?.incidentStates?.map((state: any) => (
                   <option key={state.id} value={state.id}>{safe(state.name)}</option>
-                ))}
+                )) || []}
               </Input>
               {formErrors.statusId && (
                 <div className="invalid-feedback">{formErrors.statusId}</div>
@@ -728,6 +647,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                 name="narration"
                 placeholder="Additional notes or comments..."
                 maxLength={1000}
+                disabled={readOnly || !canEditIncident}
               />
               <small className="text-muted">{form.narration.length}/1000 characters</small>
             </FormGroup>
@@ -739,7 +659,7 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
 
   return (
     <div>
-      {!masterData.loaded && (
+      {!masterData?.loaded && (
         <Alert color="info">
           <div className="d-flex align-items-center">
             <div className="spinner-border spinner-border-sm me-2"></div>
@@ -748,32 +668,13 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
         </Alert>
       )}
 
-      {masterData.loaded && (
+      {masterData?.loaded && (
         <>
-          {/* Unsaved changes warning */}
-          {hasUnsavedChanges && (
-            <Alert color="warning" className="mb-3">
-              <div className="d-flex align-items-center">
-                <span className="me-2">⚠️</span>
-                <strong>You have unsaved changes!</strong>
-                <span className="ms-2">Don't forget to save your modifications.</span>
-              </div>
-            </Alert>
-          )}
-
           {renderForm()}
 
-          {canEditIncident && (
+          {canEditIncident && !readOnly && formInitialized && (
             <div className="mt-4 pt-3 border-top">
-              <div className="d-flex justify-content-between align-items-center">
-                <div>
-                  {hasUnsavedChanges && (
-                    <small className="text-warning">
-                      <span className="me-1">⚠️</span>
-                      Unsaved changes detected
-                    </small>
-                  )}
-                </div>
+              <div className="d-flex justify-content-end align-items-center">
                 <Button
                   color="success"
                   onClick={handleSave}
@@ -786,13 +687,9 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
                       Saving Changes...
                     </>
                   ) : hasUnsavedChanges ? (
-                    <>
-                    Save Changes
-                    </>
+                    'Save Changes'
                   ) : (
-                    <>
-                      No Changes to Save
-                    </>
+                    'No Changes to Save'
                   )}
                 </Button>
               </div>

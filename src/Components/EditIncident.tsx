@@ -1,10 +1,10 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Modal, ModalHeader, ModalBody, ModalFooter, Button, Badge,
+  Modal, ModalHeader, ModalBody, ModalFooter, Button,
   Nav, NavItem, NavLink, TabContent, TabPane, Alert
 } from 'reactstrap'
-import { getCurrentUser, getStoredToken, fetchUsers, createUserLookup, getUserName, User } from '../app/(MainBody)/services/userService'
+import { getCurrentUser, getStoredToken, fetchUsers, createUserLookup, User } from '../app/(MainBody)/services/userService'
 import {
   fetchCategories,
   fetchSubcategories,
@@ -16,7 +16,6 @@ import {
   fetchIncidentStates
 } from '../app/(MainBody)/services/masterService'
 
-// Import tab components
 import DetailsTab from './tabs/DetailsTab'
 import EvidenceTab from './tabs/EvidenceTab'
 import ActionsTab from './tabs/ActionsTab'
@@ -40,8 +39,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [enrichedIncident, setEnrichedIncident] = useState<any>(null)
   const [dataReady, setDataReady] = useState(false)
+  const [initialized, setInitialized] = useState(false)
 
-  // Master data state - shared across all tabs
   const [masterData, setMasterData] = useState({
     categories: [] as Array<{id: number, name: string}>,
     subCategories: [] as Array<{id: number, name: string, category_id: number}>,
@@ -56,58 +55,30 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     loaded: false
   })
 
-  const safe = (value: any): string => value ? String(value) : ''
+  const safe = useCallback((value: any): string => value ? String(value) : '', [])
 
-  // Enhanced user type checks
-  const isEndUser = () => {
+  const userPermissions = React.useMemo(() => {
     const userTeam = userType?.toLowerCase() || ''
-    return userTeam.includes('end_user') || userTeam === 'end user' || userTeam === 'enduser'
-  }
 
-  const isFieldEngineer = () => {
-    const userTeam = userType?.toLowerCase() || ''
-    return userTeam.includes('field_engineer') || userTeam === 'field engineer' || userTeam === 'fieldengineer' || userTeam.includes('field')
-  }
+    const isEndUser = userTeam.includes('end_user') || userTeam === 'end user' || userTeam === 'enduser'
+    const isFieldEngineer = userTeam.includes('field_engineer') || userTeam === 'field engineer' || userTeam === 'fieldengineer' || userTeam.includes('field')
+    const isAdvanced = ['handler', 'manager', 'admin', 'expert_team', 'expert team', 'expert'].some(role => userTeam.includes(role))
 
-  const isAdvanced = () => {
-    const userTeam = userType?.toLowerCase() || ''
-    return ['handler', 'manager', 'admin', 'expert_team', 'expert team', 'expert'].some(role => userTeam.includes(role))
-  }
+    return {
+      isEndUser,
+      isFieldEngineer,
+      isAdvanced,
+      canEditIncident: readOnly ? false : isEndUser || isAdvanced,
+      canEditEvidence: readOnly ? false : !isEndUser,
+      hasFullAccess: readOnly ? false : isAdvanced && !isFieldEngineer && !isEndUser
+    }
+  }, [userType, readOnly])
 
-  // Override edit permissions when in read-only mode
-  const canEditIncident = () => {
-    if (readOnly) return false
-    if (isEndUser()) return true
-    if (isFieldEngineer()) return false
-    return isAdvanced()
-  }
-
-  const canEditEvidence = () => {
-    if (readOnly) return false
-    return !isEndUser()
-  }
-
-  const hasFullAccess = () => {
-    if (readOnly) return false
-    return isAdvanced() && !isFieldEngineer() && !isEndUser()
-  }
-
-  // Transform and normalize incident data for consistent field access
-  const normalizeIncidentData = (incidentData: any, masterData: any) => {
-    if (!incidentData) return incidentData
-
-    console.log('Normalizing incident data:', incidentData)
-    console.log('Master data available:', {
-      categories: masterData.categories?.length || 0,
-      sites: masterData.sites?.length || 0,
-      contactTypes: masterData.contactTypes?.length || 0,
-      urgencies: masterData.urgencies?.length || 0,
-      impacts: masterData.impacts?.length || 0
-    })
+  const normalizeIncidentData = useCallback((incidentData: any, masterData: any) => {
+    if (!incidentData || !masterData) return incidentData
 
     const normalized = { ...incidentData }
 
-    // Normalize category data
     if (incidentData.categoryName && !normalized.category?.name) {
       const categoryName = incidentData.categoryName
       const matchingCategory = masterData.categories?.find((cat: any) =>
@@ -122,15 +93,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         normalized.category = { id: null, name: categoryName }
         normalized.category_id = null
       }
-      console.log('Normalized category:', normalized.category)
     }
 
-    // Also handle case where we already have category object but need to ensure category_id is set
     if (normalized.category?.id && !normalized.category_id) {
       normalized.category_id = normalized.category.id
     }
 
-    // Normalize site data
     if (incidentData.siteName && !normalized.site?.name) {
       const siteName = incidentData.siteName
       const matchingSite = masterData.sites?.find((site: any) =>
@@ -149,15 +117,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         normalized.site = { id: null, name: siteName }
         normalized.site_id = null
       }
-      console.log('Normalized site:', normalized.site)
     }
 
-    // Also handle case where we already have site object but need to ensure site_id is set
     if (normalized.site?.id && !normalized.site_id) {
       normalized.site_id = normalized.site.id
     }
 
-    // Normalize contact type
     if (incidentData.contactTypeName && !normalized.contacttype?.name) {
       const contactTypeName = incidentData.contactTypeName
       const matchingContactType = masterData.contactTypes?.find((ct: any) =>
@@ -171,15 +136,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         normalized.contacttype = { id: null, name: contactTypeName }
         normalized.contact_type_id = null
       }
-      console.log('Normalized contact type:', normalized.contacttype)
     }
 
-    // Also handle case where we already have contacttype object but need to ensure contact_type_id is set
     if (normalized.contacttype?.id && !normalized.contact_type_id) {
       normalized.contact_type_id = normalized.contacttype.id
     }
 
-    // Normalize urgency
     if (incidentData.urgencyName && !normalized.urgency?.name) {
       const urgencyName = incidentData.urgencyName
       const matchingUrgency = masterData.urgencies?.find((urg: any) =>
@@ -193,15 +155,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         normalized.urgency = { id: null, name: urgencyName }
         normalized.urgency_id = null
       }
-      console.log('Normalized urgency:', normalized.urgency)
     }
 
-    // Also handle case where we already have urgency object but need to ensure urgency_id is set
     if (normalized.urgency?.id && !normalized.urgency_id) {
       normalized.urgency_id = normalized.urgency.id
     }
 
-    // Normalize impact
     if (incidentData.impactName && !normalized.impact?.name) {
       const impactName = incidentData.impactName
       const matchingImpact = masterData.impacts?.find((imp: any) =>
@@ -215,15 +174,12 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         normalized.impact = { id: null, name: impactName }
         normalized.impact_id = null
       }
-      console.log('Normalized impact:', normalized.impact)
     }
 
-    // Also handle case where we already have impact object but need to ensure impact_id is set
     if (normalized.impact?.id && !normalized.impact_id) {
       normalized.impact_id = normalized.impact.id
     }
 
-    // Normalize asset
     if (incidentData.assetName && !normalized.asset?.name) {
       const assetName = incidentData.assetName
       const matchingAsset = masterData.assets?.find((asset: any) =>
@@ -237,20 +193,16 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         normalized.asset = { id: null, name: assetName }
         normalized.asset_id = null
       }
-      console.log('Normalized asset:', normalized.asset)
     }
 
-    // Also handle case where we already have asset object but need to ensure asset_id is set
     if (normalized.asset?.id && !normalized.asset_id) {
       normalized.asset_id = normalized.asset.id
     }
 
-    // Normalize incident state (status)
     if (normalized.incidentstate?.id && !normalized.incidentstate_id) {
       normalized.incidentstate_id = normalized.incidentstate.id
     }
 
-    // Ensure text fields are present
     if (incidentData.shortDescription && !normalized.short_description) {
       normalized.short_description = incidentData.shortDescription
     }
@@ -258,22 +210,14 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       normalized.description = incidentData.description
     }
 
-    console.log('Final normalized incident data:', normalized)
     return normalized
-  }
+  }, [])
 
-  // Enhanced incident data fetching for read-only mode
-  const fetchFullIncidentData = async (incidentId: string | number) => {
+  const fetchFullIncidentData = useCallback(async (incidentId: string | number) => {
     const token = getStoredToken()
-    if (!token) {
-      console.warn('No authentication token found')
-      return incident
-    }
+    if (!token) return incident
 
     try {
-      console.log('Fetching full incident data for ID:', incidentId)
-
-      // Try multiple API endpoints to get complete incident data
       const endpoints = [
         `https://apexwpc.apextechno.co.uk/api/incidents/${incidentId}`,
         `https://apexwpc.apextechno.co.uk/api/incident-handler/incident/${incidentId}`,
@@ -282,7 +226,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
 
       for (const endpoint of endpoints) {
         try {
-          console.log('Trying endpoint:', endpoint)
           const response = await fetch(endpoint, {
             method: 'GET',
             headers: {
@@ -293,46 +236,32 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
 
           if (response.ok) {
             const result = await response.json()
-            console.log(`Response from ${endpoint}:`, result)
 
             if (result.success && result.data) {
-              console.log('Successfully fetched incident data:', result.data)
               return result.data
             } else if (result && !result.success && result.data) {
-              console.log('Fetched incident data (success=false):', result.data)
               return result.data
             } else if (Array.isArray(result.data) && result.data.length > 0) {
-              console.log('Fetched incident data (array):', result.data[0])
               return result.data[0]
             } else if (result && typeof result === 'object' && result.id) {
-              console.log('Fetched incident data (direct):', result)
               return result
             }
-          } else {
-            console.warn(`Endpoint ${endpoint} returned status:`, response.status)
           }
         } catch (endpointError) {
-          console.warn(`Error with endpoint ${endpoint}:`, endpointError)
           continue
         }
       }
-
-      console.warn('All endpoints failed, using original incident data')
     } catch (error) {
-      console.warn('Error fetching full incident data:', error)
+      // Silently fail and return original incident
     }
 
-    console.log('Returning original incident data:', incident)
     return incident
-  }
+  }, [incident])
 
-  // Get incident status progression with enhanced logic
-  const getStatusProgression = () => {
+  const getStatusProgression = useCallback(() => {
     const currentIncident = enrichedIncident || incident
-
     const currentStatusId = currentIncident?.incidentstate_id || currentIncident?.incidentstate?.id || currentIncident?.status_id || 1
-
-    const backendStatuses = masterData.incidentStates || []
+    const backendStatuses = masterData?.incidentStates || []
 
     if (backendStatuses.length === 0) {
       const defaultStatuses = [
@@ -359,8 +288,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     }
 
     const sortedStatuses = [...backendStatuses].sort((a, b) => a.id - b.id)
-
     let currentStep = 0
+
     for (let i = 0; i < sortedStatuses.length; i++) {
       if (sortedStatuses[i].id === parseInt(currentStatusId.toString())) {
         currentStep = i
@@ -372,13 +301,13 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       statuses: sortedStatuses,
       currentStep: currentStep
     }
-  }
+  }, [enrichedIncident, incident, masterData?.incidentStates])
 
-  // Enhanced master data loading with better error handling
-  const loadMasterData = async () => {
+  const loadMasterData = useCallback(async () => {
+    if (masterData?.loaded) return
+
     try {
       setLoading(true)
-      console.log('Loading master data...')
 
       const results = await Promise.allSettled([
         fetchCategories(),
@@ -403,17 +332,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       const users = usersRes.status === 'fulfilled' ? usersRes.value.data || [] : []
       const userLookup = createUserLookup(users)
 
-      console.log('Master data loaded:', {
-        categories: categories.length,
-        contactTypes: contactTypes.length,
-        impacts: impacts.length,
-        urgencies: urgencies.length,
-        incidentStates: incidentStates.length,
-        sites: sites.length,
-        assets: assets.length,
-        users: users.length
-      })
-
       setMasterData({
         categories,
         subCategories: [],
@@ -428,17 +346,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         loaded: true
       })
 
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          const requestNames = ['categories', 'contactTypes', 'impacts', 'urgencies', 'incidentStates', 'sites', 'assets', 'users']
-          console.warn(`Failed to load ${requestNames[index]}:`, result.reason)
-        }
-      })
-
     } catch (error) {
-      console.error('Error loading master data:', error)
       setError('Failed to load form options. Some features may not work correctly.')
-
       setMasterData({
         categories: [],
         subCategories: [],
@@ -454,12 +363,10 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       })
     } finally {
       setLoading(false)
-      setTimeout(() => setDataReady(true), 100)
     }
-  }
+  }, [masterData?.loaded])
 
-  // Get available tabs based on user type and read-only mode
-  const getAvailableTabs = () => {
+  const getAvailableTabs = useCallback(() => {
     const tabs = ['details']
 
     if (readOnly) {
@@ -467,30 +374,29 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       return tabs
     }
 
-    if (isEndUser()) {
+    if (userPermissions.isEndUser) {
       return tabs
     }
 
-    if (isFieldEngineer()) {
+    if (userPermissions.isFieldEngineer) {
       tabs.push('evidence', 'actions', 'assignment', 'history')
       return tabs
     }
 
-    if (hasFullAccess()) {
+    if (userPermissions.hasFullAccess) {
       tabs.push('actions', 'assignment', 'evidence', 'history', 'knowledge')
     }
 
     return tabs
-  }
+  }, [readOnly, userPermissions])
 
-  // Enhanced incident save with better error handling
-  const handleSave = async (updateData: any) => {
+  const handleSave = useCallback(async (updateData: any) => {
     if (readOnly) {
       setError('Cannot save changes in read-only mode')
       return false
     }
 
-    if (!canEditIncident() || !currentUser?.id) {
+    if (!userPermissions.canEditIncident || !currentUser?.id) {
       setError('You do not have permission to edit this incident')
       return false
     }
@@ -499,8 +405,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     setError(null)
 
     try {
-      console.log('Saving incident with data:', updateData)
-
       const token = getStoredToken()
       if (!token) {
         setError('Authentication token not found. Please login again.')
@@ -516,11 +420,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         body: JSON.stringify(updateData)
       })
 
-      console.log('Save response status:', response.status)
-
       if (response.ok) {
         const result = await response.json()
-        console.log('Save response data:', result)
 
         if (result.success !== false) {
           setSuccess('Incident updated successfully')
@@ -534,7 +435,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         }
       } else {
         const errorText = await response.text()
-        console.error('Save request failed:', { status: response.status, error: errorText })
 
         try {
           const errorData = JSON.parse(errorText)
@@ -560,7 +460,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
         return false
       }
     } catch (error) {
-      console.error('Save error:', error)
       if (error instanceof TypeError && error.message.includes('fetch')) {
         setError('Network error - unable to save changes. Please check your connection.')
       } else {
@@ -570,20 +469,18 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     } finally {
       setLoading(false)
     }
-  }
+  }, [readOnly, userPermissions.canEditIncident, currentUser?.id, onSave])
 
-  // Enhanced tab change handler with validation
-  const handleTabChange = (tab: string) => {
+  const handleTabChange = useCallback((tab: string) => {
     const availableTabs = getAvailableTabs()
     if (availableTabs.includes(tab)) {
       setActiveTab(tab)
     }
-  }
+  }, [getAvailableTabs])
 
-  // Common props for all tabs
-  const getCommonTabProps = () => {
+  const getCommonTabProps = useCallback(() => {
     const currentIncident = enrichedIncident || incident
-    const normalizedIncident = masterData.loaded ?
+    const normalizedIncident = masterData?.loaded ?
       normalizeIncidentData(currentIncident, masterData) :
       currentIncident
 
@@ -591,12 +488,8 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       incident: normalizedIncident,
       userType,
       currentUser,
-      masterData,
-      isEndUser: readOnly ? false : isEndUser(),
-      isFieldEngineer: readOnly ? true : isFieldEngineer(),
-      hasFullAccess: readOnly ? false : hasFullAccess(),
-      canEditIncident: canEditIncident(),
-      canEditEvidence: canEditEvidence(),
+      masterData: masterData || { loaded: false, categories: [], contactTypes: [], sites: [], assets: [], impacts: [], urgencies: [], incidentStates: [], users: [], userLookup: {}, subCategories: [] },
+      ...userPermissions,
       setError,
       setSuccess,
       safe,
@@ -604,44 +497,39 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       originalIncident: incident,
       enrichedIncident: enrichedIncident
     }
-  }
+  }, [enrichedIncident, incident, masterData, userType, currentUser, userPermissions, safe, readOnly])
 
-  // Initialize component and fetch enriched data if in read-only mode
   useEffect(() => {
-    const user = getCurrentUser()
-    console.log('Current user:', user)
-    console.log('User type:', userType)
-    console.log('Read-only mode:', readOnly)
-    console.log('Original incident data:', incident)
-    setCurrentUser(user)
+    if (initialized) return
 
-    loadMasterData()
+    const initializeComponent = async () => {
+      const user = getCurrentUser()
+      setCurrentUser(user)
 
-    if (readOnly && incident?.id) {
-      console.log('Fetching enriched incident data for read-only mode...')
-      fetchFullIncidentData(incident.id).then(fullIncident => {
-        console.log('Enriched incident data received:', fullIncident)
+      await loadMasterData()
 
-        if (fullIncident && (fullIncident.id || fullIncident.incident_no)) {
-          setEnrichedIncident(fullIncident)
-          setTimeout(() => setDataReady(true), 150)
-        } else {
-          console.warn('Invalid enriched incident data, using original:', fullIncident)
+      if (readOnly && incident?.id) {
+        try {
+          const fullIncident = await fetchFullIncidentData(incident.id)
+          if (fullIncident && (fullIncident.id || fullIncident.incident_no)) {
+            setEnrichedIncident(fullIncident)
+          } else {
+            setEnrichedIncident(incident)
+          }
+        } catch (error) {
           setEnrichedIncident(incident)
-          setTimeout(() => setDataReady(true), 150)
         }
-      }).catch(error => {
-        console.error('Error fetching enriched incident data:', error)
+      } else {
         setEnrichedIncident(incident)
-        setTimeout(() => setDataReady(true), 150)
-      })
-    } else if (!readOnly) {
-      setEnrichedIncident(incident)
-      setTimeout(() => setDataReady(true), 100)
-    }
-  }, [incident?.id, readOnly])
+      }
 
-  // Auto-clear alerts with different timeouts
+      setDataReady(true)
+      setInitialized(true)
+    }
+
+    initializeComponent()
+  }, [])
+
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 10000)
@@ -656,18 +544,18 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
     }
   }, [success])
 
-  // Ensure active tab is available to current user
   useEffect(() => {
+    if (!initialized) return
+
     const availableTabs = getAvailableTabs()
     if (!availableTabs.includes(activeTab)) {
       setActiveTab(availableTabs[0] || 'details')
     }
-  }, [userType, readOnly])
+  }, [initialized, getAvailableTabs, activeTab])
 
   const availableTabs = getAvailableTabs()
   const { statuses, currentStep } = getStatusProgression()
 
-  // Get tab display name with icons
   const getTabDisplayName = (tab: string) => {
     switch (tab) {
       case 'details': return 'Details'
@@ -678,6 +566,20 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       case 'knowledge': return 'Knowledge'
       default: return tab.charAt(0).toUpperCase() + tab.slice(1)
     }
+  }
+
+  if (!initialized || !dataReady) {
+    return (
+      <Modal isOpen={true} toggle={onClose} size="xl" style={{ maxWidth: '95vw' }}>
+        <ModalHeader toggle={onClose}>
+          <h5 className="mb-0">Loading Incident...</h5>
+        </ModalHeader>
+        <ModalBody className="text-center py-5">
+          <div className="spinner-border text-primary mb-3"></div>
+          <p>Initializing incident editor...</p>
+        </ModalBody>
+      </Modal>
+    )
   }
 
   return (
@@ -693,7 +595,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
       </ModalHeader>
 
       <ModalBody style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-        {/* Enhanced Progress Bar with Status Information */}
         <div className="mb-4">
           <div className="card" style={{
             background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
@@ -754,7 +655,6 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </div>
         </div>
 
-        {/* Global alerts with enhanced styling */}
         {error && (
           <Alert color="danger" toggle={() => setError(null)} className="d-flex align-items-center">
             <span className="me-2">⚠️</span>
@@ -773,20 +673,18 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </Alert>
         )}
 
-        {/* Loading indicator for master data */}
-        {loading && !masterData.loaded && (
+        {loading && (
           <Alert color="info" className="d-flex align-items-center">
             <div className="spinner-border spinner-border-sm me-2"></div>
             <div>
-              <strong>Loading data...</strong>
+              <strong>Processing...</strong>
               <div className="mt-1">
-                <small>Fetching categories, sites, assets, and other form options...</small>
+                <small>Saving your changes...</small>
               </div>
             </div>
           </Alert>
         )}
 
-        {/* Tab navigation with enhanced styling */}
         {availableTabs.length > 1 && (
           <Nav tabs className="mb-4 border-bottom">
             {availableTabs.map(tab => (
@@ -807,55 +705,41 @@ const EditIncident: React.FC<EditIncidentProps> = ({ incident, userType, onClose
           </Nav>
         )}
 
-        {/* Tab content */}
         <TabContent activeTab={activeTab}>
-          {/* Details Tab */}
           <TabPane tabId="details">
-            {!dataReady || !masterData.loaded ? (
-              <div className="text-center py-4">
-                <div className="spinner-border text-primary mb-3"></div>
-                <p>Loading incident details...</p>
-              </div>
-            ) : (
-              <DetailsTab
-                {...getCommonTabProps()}
-                onSave={handleSave}
-                loading={loading}
-                key={`details-${dataReady}-${enrichedIncident?.id || incident?.id}`}
-              />
-            )}
+            <DetailsTab
+              {...getCommonTabProps()}
+              onSave={handleSave}
+              loading={loading}
+              key={`details-${initialized}-${enrichedIncident?.id || incident?.id}`}
+            />
           </TabPane>
 
-          {/* Actions Tab */}
           {availableTabs.includes('actions') && (
             <TabPane tabId="actions">
               <ActionsTab {...getCommonTabProps()} />
             </TabPane>
           )}
 
-          {/* Evidence Tab */}
           {availableTabs.includes('evidence') && (
             <TabPane tabId="evidence">
               <EvidenceTab {...getCommonTabProps()} />
             </TabPane>
           )}
 
-          {/* Assignment Tab - Only in edit mode */}
-          {!readOnly && (isFieldEngineer() || hasFullAccess()) && (
+          {!readOnly && (userPermissions.isFieldEngineer || userPermissions.hasFullAccess) && (
             <TabPane tabId="assignment">
               <AssignmentTab {...getCommonTabProps()} />
             </TabPane>
           )}
 
-          {/* History Tab */}
           {availableTabs.includes('history') && (
             <TabPane tabId="history">
               <HistoryTab {...getCommonTabProps()} />
             </TabPane>
           )}
 
-          {/* Knowledge Tab - Only in edit mode for advanced users */}
-          {!readOnly && hasFullAccess() && (
+          {!readOnly && userPermissions.hasFullAccess && (
             <TabPane tabId="knowledge">
               <KnowledgeTab {...getCommonTabProps()} />
             </TabPane>
