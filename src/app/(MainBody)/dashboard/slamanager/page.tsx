@@ -59,7 +59,7 @@ interface SLADefinition {
 }
 
 interface EnhancedIncident extends Incident {
-  category_name?: string
+  category_name: string
   priority_name?: string
   urgency_name?: string
   impact_name?: string
