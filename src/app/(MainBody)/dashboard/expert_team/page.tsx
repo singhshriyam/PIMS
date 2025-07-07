@@ -430,15 +430,6 @@ const ExpertTeamDashboard: React.FC = () => {
               <div className="d-flex justify-content-between align-items-center">
                 <div>
                   <h4 className="mb-1">Welcome back, {user.name}!</h4>
-                  <small className="text-muted">Expert Team Dashboard - Advanced Analysis & Technical Resolution (User ID: {user.userId})</small>
-                </div>
-                <div className="d-flex gap-2">
-                  <Button color="outline-primary" size="sm" onClick={handleRefreshData}>
-                    🔄 Refresh
-                  </Button>
-                  <Button color="primary" size="sm" onClick={handleViewAssignIncidents}>
-                    📋 Assign Incidents
-                  </Button>
                 </div>
               </div>
             </CardBody>
@@ -449,10 +440,10 @@ const ExpertTeamDashboard: React.FC = () => {
       {/* Statistics Cards */}
       <Row>
         {[
-          { value: stats.total, label: 'Expert Cases', color: 'primary', icon: '🧠' },
-          { value: stats.resolved, label: 'Completed', color: 'success', icon: '✅' },
-          { value: stats.inProgress, label: 'In Progress', color: 'info', icon: '🔬' },
-          { value: stats.pending, label: 'Pending Review', color: 'warning', icon: '⏳' }
+          { value: stats.total, label: 'Expert Cases', color: 'primary'},
+          { value: stats.resolved, label: 'Completed', color: 'success'},
+          { value: stats.inProgress, label: 'In Progress', color: 'info' },
+          { value: stats.pending, label: 'Pending Review', color: 'warning' }
         ].map((stat, index) => (
           <Col xl={3} md={6} className="box-col-6 mt-3" key={index}>
             <Card className="o-hidden">
@@ -460,7 +451,6 @@ const ExpertTeamDashboard: React.FC = () => {
                 <div className="media static-top-widget">
                   <div className="align-self-center text-center">
                     <div className="d-inline-block">
-                      <div className="fs-4 mb-2">{stat.icon}</div>
                       <h5 className="mb-0 counter">{stat.value}</h5>
                       <span className="f-light">{stat.label}</span>
                     </div>
@@ -478,16 +468,13 @@ const ExpertTeamDashboard: React.FC = () => {
           <Card>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5>🔬 Recent Expert Assignments</h5>
+                <h5>Recent Expert Assignments</h5>
                 <div className="d-flex gap-2">
                   {stats.total > 0 && (
                     <Button color="outline-primary" size="sm" onClick={handleViewAllIncidents}>
                       View All Cases
                     </Button>
                   )}
-                  <Button color="primary" size="sm" onClick={handleViewAssignIncidents}>
-                    📋 Assign Tasks
-                  </Button>
                 </div>
               </div>
 
@@ -500,9 +487,6 @@ const ExpertTeamDashboard: React.FC = () => {
                     </svg>
                   </div>
                   <h6 className="text-muted">No expert cases assigned yet</h6>
-                  <p className="text-muted">
-                    You don't have any expert assignments at the moment. Complex cases requiring specialized analysis will appear here.
-                  </p>
                 </div>
               ) : (
                 <div className="table-responsive">
@@ -569,7 +553,7 @@ const ExpertTeamDashboard: React.FC = () => {
         <Col lg={4}>
           <Card>
             <CardBody>
-              <h5 className="mb-3">📊 Expert Workload</h5>
+              <h5 className="mb-3">Expert Workload</h5>
               {stats.total > 0 ? (
                 <div style={{ minHeight: '300px' }}>
                   <Chart
@@ -605,7 +589,7 @@ const ExpertTeamDashboard: React.FC = () => {
         <Col lg={12}>
           <Card>
             <CardBody>
-              <h5 className="mb-3">📈 Monthly Expert Performance</h5>
+              <h5 className="mb-3">Monthly Expert Performance</h5>
               {stats.total > 0 ? (
                 <div style={{ minHeight: '350px' }}>
                   <Chart
@@ -628,7 +612,6 @@ const ExpertTeamDashboard: React.FC = () => {
                   }}
                 >
                   <p className="text-muted">No performance data available yet</p>
-                  <small className="text-muted">Expert case trends will appear here as work is completed</small>
                 </div>
               )}
             </CardBody>

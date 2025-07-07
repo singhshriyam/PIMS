@@ -242,10 +242,10 @@ const IncidentManagerMenuList: MenuItem[] = [
     createMenuItem("Assign Incidents", "/dashboard/incident_manager?view=assign-incidents"),
     createMenuItem("Pending EA approvals", "/dashboard?tab=pending-approval")
   ]),
-  createMenuSection("Requests", [
-    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  ]),
+  // createMenuSection("Requests", [
+  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
+  // ]),
   // createMenuSection("SLA Management", [
   //   createMenuItem("Activate SLA", "/dashboard?tab=sla-define"),
   //   createMenuItem("SLA Reports", "/dashboard?tab=sla-report")
@@ -261,18 +261,16 @@ const IncidentHandlerMenuList: MenuItem[] = [
     createMenuItem("Create Incident", "/dashboard?tab=create-incident", "plus-circle"),
     createMenuItem("Assign to Others", "/dashboard/incident_handler?view=assign-incidents", "user-check")
   ]),
-  createMenuSection("Requests", [
-    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  ])
+  // createMenuSection("Requests", [
+  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
+  // ])
 ];
 
 //Field Engineer Menu
 const FieldEngineerMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
     createMenuItem("Field Engineer", "/dashboard/field_engineer"),
-    createMenuItem("Assign Incidents", "/dashboard/field_engineer?view=assign-incidents")
-
   ])
 ];
 
@@ -286,10 +284,10 @@ const ExpertTeamMenuList: MenuItem[] = [
     createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
     createMenuItem("Assign to Others", "/dashboard/expert_team?view=assign-incidents")
   ]),
-  createMenuSection("Requests", [
-    createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-    createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  ])
+  // createMenuSection("Requests", [
+  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
+  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
+  // ])
 ];
 
 const SLAManagerMenuList: MenuItem[] = [

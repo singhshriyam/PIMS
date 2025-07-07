@@ -60,14 +60,6 @@ const FieldEngineerDashboard = () => {
     return incident.priority?.name || incident.urgency?.name || 'Medium'
   }
 
-  const getCallerName = (incident: Incident) => {
-    if (!incident.user) return 'Unknown User'
-    const fullName = incident.user.last_name
-      ? `${incident.user.name} ${incident.user.last_name}`
-      : incident.user.name
-    return fullName || 'Unknown User'
-  }
-
   const getStatus = (incident: Incident) => {
     if (incident.incidentstate && typeof incident.incidentstate === 'string') {
       return incident.incidentstate
@@ -242,21 +234,6 @@ const FieldEngineerDashboard = () => {
               <div className="d-flex justify-content-between align-items-center">
                 <div>
                   <h4 className="mb-1">Welcome back, {user?.first_name || 'Field Engineer'}!</h4>
-                  <small className="text-muted">
-                    Field Engineer Dashboard (User ID: {user?.id})
-                  </small>
-                </div>
-                <div className="d-flex gap-2">
-                  <Button color="outline-primary" size="sm" onClick={handleRefresh}>
-                    🔄 Refresh
-                  </Button>
-                  <Button
-                    color="primary"
-                    size="sm"
-                    onClick={() => router.push('/dashboard/field_engineer?view=assign-incidents')}
-                  >
-                    📋 Assign Incidents
-                  </Button>
                 </div>
               </div>
             </CardBody>
@@ -330,7 +307,6 @@ const FieldEngineerDashboard = () => {
             <CardHeader>
               <div className="d-flex justify-content-between align-items-center">
                 <h5>🔧 My Field Assignments ({filteredIncidents.length})</h5>
-                <small className="text-muted">Page {currentPage} of {totalPages}</small>
               </div>
             </CardHeader>
             <CardBody>
@@ -347,7 +323,7 @@ const FieldEngineerDashboard = () => {
                         <tr>
                           <th>Incident</th>
                           <th>Description</th>
-                          <th>Category</th>
+                          {/* <th>Category</th> */}
                           <th>Priority</th>
                           <th>Status</th>
                           <th>Location</th>
@@ -363,11 +339,6 @@ const FieldEngineerDashboard = () => {
                                 <span className="fw-medium text-primary">
                                   {getIncidentNumber(incident)}
                                 </span>
-                                <div>
-                                  <small className="text-muted">
-                                    {getCallerName(incident)}
-                                  </small>
-                                </div>
                               </div>
                             </td>
                             <td>
@@ -375,7 +346,7 @@ const FieldEngineerDashboard = () => {
                                 {getShortDescription(incident)}
                               </div>
                             </td>
-                            <td>{getCategoryName(incident)}</td>
+                            {/* <td>{getCategoryName(incident)}</td> */}
                             <td>
                               <Badge
                                 style={{

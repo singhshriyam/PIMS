@@ -94,6 +94,36 @@ const InteractiveIncidentMap: React.FC<InteractiveIncidentMapProps> = ({
     };
   }, []);
 
+  // Create popup content using backend data
+  const getIncidentNumber = (incident: Incident): string => {
+    return incident.incident_no || incident.id?.toString() || 'Unknown';
+  };
+
+  const getCategoryName = (incident: Incident): string => {
+    return incident.category?.name || 'Uncategorized';
+  };
+
+  const getStatusName = (incident: Incident): string => {
+    const state = incident.incidentstate?.name?.toLowerCase() || '';
+    if (state === 'new') return 'pending';
+    if (state === 'inprogress') return 'in_progress';
+    if (state === 'resolved') return 'resolved';
+    if (state === 'closed') return 'closed';
+    return 'pending';
+  };
+
+  const getPriorityName = (incident: Incident): string => {
+    return incident.priority?.name || incident.urgency?.name || 'Medium';
+  };
+
+  const getCallerName = (incident: Incident): string => {
+    if (!incident.user) return 'Unknown User';
+    const fullName = incident.user.last_name
+      ? `${incident.user.name} ${incident.user.last_name}`
+      : incident.user.name;
+    return fullName || 'Unknown User';
+  };
+
   // Update markers
   const updateMarkers = () => {
     if (!mapInstanceRef.current || !incidents.length) return;
@@ -165,36 +195,6 @@ const InteractiveIncidentMap: React.FC<InteractiveIncidentMapProps> = ({
 
               // Create marker
               const marker = window.L.marker(position, { icon: customIcon }).addTo(mapInstanceRef.current);
-
-              // Create popup content using backend data
-              const getIncidentNumber = (incident: Incident): string => {
-                return incident.incident_no || incident.id?.toString() || 'Unknown';
-              };
-
-              const getCategoryName = (incident: Incident): string => {
-                return incident.category?.name || 'Uncategorized';
-              };
-
-              const getStatusName = (incident: Incident): string => {
-                const state = incident.incidentstate?.name?.toLowerCase() || '';
-                if (state === 'new') return 'pending';
-                if (state === 'inprogress') return 'in_progress';
-                if (state === 'resolved') return 'resolved';
-                if (state === 'closed') return 'closed';
-                return 'pending';
-              };
-
-              const getPriorityName = (incident: Incident): string => {
-                return incident.priority?.name || incident.urgency?.name || 'Medium';
-              };
-
-              const getCallerName = (incident: Incident): string => {
-                if (!incident.user) return 'Unknown User';
-                const fullName = incident.user.last_name
-                  ? `${incident.user.name} ${incident.user.last_name}`
-                  : incident.user.name;
-                return fullName || 'Unknown User';
-              };
 
               const popupContent = `
                 <div style="max-width: 250px; font-family: sans-serif;">

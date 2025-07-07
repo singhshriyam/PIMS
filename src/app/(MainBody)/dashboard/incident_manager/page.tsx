@@ -451,35 +451,6 @@ const IncidentManagerDashboard: React.FC = () => {
                 <div className="d-flex justify-content-between align-items-center">
                   <div>
                     <h4 className="mb-1">Welcome back, {user.name}!</h4>
-                    <small className="text-muted">
-                      Incident Manager Dashboard - Team Oversight & Performance Management (User ID: {user.userId})
-                    </small>
-                  </div>
-                  <div>
-                    <Button color="outline-primary" size="sm" onClick={handleRefreshData}>
-                      🔄 Refresh
-                    </Button>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Quick Actions */}
-        <Row>
-          <Col xs={12}>
-            <Card className="mb-4">
-              <CardBody>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h6 className="mb-0">🚀 Quick Management Actions</h6>
-                  <div className="d-flex gap-2">
-                    <Button color="primary" size="sm" onClick={handleViewAllIncidents}>
-                      📋 All Incidents
-                    </Button>
-                    <Button color="warning" size="sm" onClick={handleViewAssignIncidents}>
-                      🎯 Assign Incidents
-                    </Button>
                   </div>
                 </div>
               </CardBody>
@@ -490,15 +461,15 @@ const IncidentManagerDashboard: React.FC = () => {
         {/* Statistics Cards */}
         <Row className="mb-4">
           {[
-            { value: stats.total, label: 'Total Incidents', color: 'primary', border: 'border-primary' },
-            { value: stats.resolved, label: 'Resolved', color: 'success', border: 'border-success' },
-            { value: stats.inProgress, label: 'In Progress', color: 'info', border: 'border-info' },
-            { value: stats.pending, label: 'Pending', color: 'warning', border: 'border-warning' }
+            { value: stats.total, label: 'Total Incidents'},
+            { value: stats.resolved, label: 'Resolved' },
+            { value: stats.inProgress, label: 'In Progress'},
+            { value: stats.pending, label: 'Pending'}
           ].map((stat, index) => (
             <Col xl={3} md={6} key={index}>
-              <Card className={`${stat.border} h-100`}>
+              <Card className={` h-100`}>
                 <CardBody className="text-center py-4">
-                  <h3 className={`mb-0 text-${stat.color}`}>{stat.value}</h3>
+                  <h3 className={`mb-0`}>{stat.value}</h3>
                   <p className="text-muted mb-0">{stat.label}</p>
                 </CardBody>
               </Card>
@@ -511,7 +482,7 @@ const IncidentManagerDashboard: React.FC = () => {
           <Col lg={4}>
             <Card className="h-100">
               <CardHeader>
-                <h5 className="mb-0">📊 Status Overview</h5>
+                <h5 className="mb-0">Status Overview</h5>
               </CardHeader>
               <CardBody>
                 {stats.total > 0 ? (
@@ -541,7 +512,7 @@ const IncidentManagerDashboard: React.FC = () => {
           <Col lg={8}>
             <Card className="h-100">
               <CardHeader>
-                <h5 className="mb-0">🗺️ Interactive Incident Map</h5>
+                <h5 className="mb-0">Interactive Incident Map</h5>
               </CardHeader>
               <CardBody>
                 <InteractiveIncidentMap
@@ -559,7 +530,7 @@ const IncidentManagerDashboard: React.FC = () => {
           <Col lg={12}>
             <Card>
               <CardHeader>
-                <h5 className="mb-0">👥 Team Performance Overview</h5>
+                <h5 className="mb-0">Team Performance Overview</h5>
               </CardHeader>
               <CardBody>
                 {stats.total > 0 && handlerPerformanceData.handlers.length > 0 ? (
@@ -592,13 +563,10 @@ const IncidentManagerDashboard: React.FC = () => {
             <Card>
               <CardHeader>
                 <div className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">📋 Recent Incidents ({dashboardData.managedIncidents.length} total)</h5>
+                  <h5 className="mb-0">Recent Incidents ({dashboardData.managedIncidents.length} total)</h5>
                   <div>
                     <Button color="outline-primary" size="sm" onClick={handleViewAllIncidents} className="me-2">
                       View All Incidents
-                    </Button>
-                    <Button color="outline-warning" size="sm" onClick={handleViewAssignIncidents}>
-                      Assign Incidents
                     </Button>
                   </div>
                 </div>
@@ -715,7 +683,7 @@ const IncidentManagerDashboard: React.FC = () => {
                   <h5 className="mb-0 text-white">📍 Incident Details</h5>
                   <Button
                     color="link"
-                    className="text-white p-0"
+                    className="text-dark p-0"
                     onClick={closeIncidentDetails}
                     style={{ fontSize: '24px', textDecoration: 'none' }}
                   >
@@ -777,7 +745,7 @@ const IncidentManagerDashboard: React.FC = () => {
 
                 <div className="mb-3">
                   <strong>Description:</strong>
-                  <div className="mt-1 p-2 bg-light rounded">
+                  <div className="mt-1 p-2 bg-light text-dark rounded">
                     {selectedIncident.short_description || 'No description available'}
                   </div>
                 </div>
@@ -786,7 +754,7 @@ const IncidentManagerDashboard: React.FC = () => {
                  selectedIncident.description !== selectedIncident.short_description && (
                   <div className="mb-3">
                     <strong>Detailed Description:</strong>
-                    <div className="mt-1 p-2 bg-light rounded">
+                    <div className="mt-1 p-2 bg-light text-dark rounded">
                       {selectedIncident.description}
                     </div>
                   </div>
@@ -795,14 +763,8 @@ const IncidentManagerDashboard: React.FC = () => {
                 {(selectedIncident.address || selectedIncident.lat || selectedIncident.lng) && (
                   <div className="mb-3">
                     <strong>Location:</strong>
-                    <div className="mt-1 p-2 bg-light rounded">
+                    <div className="mt-1 p-2 bg-light text-dark rounded">
                       <div>{selectedIncident.address || 'Address not specified'}</div>
-                      {(selectedIncident.lat && selectedIncident.lng) && (
-                        <div>
-                          <strong>GPS Coordinates:</strong> {selectedIncident.lat.toString().substring(0,8)}, {selectedIncident.lng.toString().substring(0,8)}
-                          <span className="text-success ms-2">📍 Precise Location</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -826,26 +788,6 @@ const IncidentManagerDashboard: React.FC = () => {
                 </Row>
 
                 <div className="text-center mt-4">
-                  <Button
-                    color="warning"
-                    className="me-2"
-                    onClick={() => {
-                      closeIncidentDetails();
-                      handleViewAssignIncidents();
-                    }}
-                  >
-                    Assign Handler
-                  </Button>
-                  <Button
-                    color="primary"
-                    className="me-2"
-                    onClick={() => {
-                      closeIncidentDetails();
-                      handleViewAllIncidents();
-                    }}
-                  >
-                    View All Incidents
-                  </Button>
                   <Button color="outline-secondary" onClick={closeIncidentDetails}>Close</Button>
                 </div>
               </CardBody>

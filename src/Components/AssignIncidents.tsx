@@ -904,7 +904,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
         </ModalFooter>
       </Modal>
 
-      {/* Incident Details Modal
+      {/* Incident Details Modal */}
       {showEditModal && editingIncident && (
         <EditIncident
           incident={editingIncident}
@@ -920,7 +920,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
           }}
           readOnly={true}
         />
-      )} */}
+      )}
     </div>
   )
 }
