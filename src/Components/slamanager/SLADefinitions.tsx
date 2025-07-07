@@ -179,10 +179,24 @@ const SLADefinitions = () => {
       const headers = getHeaders();
       if (!headers) return;
 
+      // Exclude auto-managed fields for create
+      const createData = {
+        name: formData.name,
+        sla_type_id: formData.sla_type_id,
+        sla_target_id: formData.sla_target_id,
+        days: formData.days,
+        hours: formData.hours,
+        minutes: formData.minutes,
+        seconds: formData.seconds || 0, // Ensure seconds is never null
+        active: formData.active,
+        cost: formData.cost,
+        sla_group_id: formData.sla_group_id
+      };
+
       const response = await fetch(`${API_BASE_URL}/sla-definitions`, {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify(formData)
+        body: JSON.stringify(createData)
       });
 
       if (response.status === 401) {
@@ -196,6 +210,8 @@ const SLADefinitions = () => {
         resetForm();
         fetchSLADefinitions();
       } else {
+        const errorText = await response.text();
+        console.error('Create failed:', response.status, errorText);
         showAlert(`Failed to create SLA definition (Status: ${response.status})`, 'danger');
       }
     } catch (error) {
@@ -205,17 +221,49 @@ const SLADefinitions = () => {
 
   // Update SLA definition
   const updateSLADefinition = async () => {
-    if (!editingId) return;
+    if (!editingId) {
+      showAlert('No definition selected for editing', 'danger');
+      return;
+    }
 
     try {
       const headers = getHeaders();
       if (!headers) return;
 
+      // First, let's verify the definition exists
+      console.log('Available definitions:', slaDefinitions.map(def => ({ id: def.id, name: def.name })));
+      const definitionExists = slaDefinitions.find(def => def.id === editingId);
+
+      if (!definitionExists) {
+        showAlert(`Definition with ID ${editingId} not found in current list`, 'danger');
+        return;
+      }
+
+      // Include ALL fields including timestamps like in Postman
+      const updateData = {
+        sla_type_id: formData.sla_type_id,
+        sla_target_id: formData.sla_target_id,
+        name: formData.name,
+        days: formData.days,
+        hours: formData.hours,
+        minutes: formData.minutes,
+        seconds: formData.seconds || 0, // Ensure seconds is never null
+        active: formData.active,
+        cost: formData.cost,
+        created_at: definitionExists.created_at,
+        updated_at: definitionExists.updated_at,
+        sla_group_id: formData.sla_group_id
+      };
+
+      console.log('Updating SLA Definition:', editingId, updateData);
+
       const response = await fetch(`${API_BASE_URL}/sla-definitions/${editingId}`, {
         method: 'PUT',
         headers: headers,
-        body: JSON.stringify(formData)
+        body: JSON.stringify(updateData)
       });
+
+      console.log('Response status:', response.status);
 
       if (response.status === 401) {
         showAlert('Authentication failed. Please login again.', 'danger');
@@ -223,16 +271,21 @@ const SLADefinitions = () => {
       }
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Update response:', result);
         showAlert('SLA Definition updated successfully!');
         setEditModal(false);
         setEditingId(null);
         resetForm();
         fetchSLADefinitions();
       } else {
-        showAlert(`Failed to update SLA definition (Status: ${response.status})`, 'danger');
+        const errorText = await response.text();
+        console.error('Update failed:', response.status, errorText);
+        showAlert(`Failed to update SLA definition (Status: ${response.status}): ${errorText}`, 'danger');
       }
     } catch (error) {
-      showAlert('Error updating SLA definition', 'danger');
+      console.error('Update error:', error);
+      showAlert('Error updating SLA definition: ' + 'danger');
     }
   };
 
@@ -298,7 +351,7 @@ const SLADefinitions = () => {
       days: definition.days,
       hours: definition.hours,
       minutes: definition.minutes,
-      seconds: definition.seconds,
+      seconds: definition.seconds || 0, // Ensure seconds is never null
       active: definition.active,
       cost: definition.cost,
       sla_group_id: definition.sla_group_id
@@ -381,9 +434,18 @@ const SLADefinitions = () => {
             <div className="card-header">
               <div className="d-flex justify-content-between align-items-center">
                 <h5 className="mb-0">SLA Definition List</h5>
-                <button className="btn btn-success btn-sm" onClick={handleCreate}>
-                  + Add SLA Definition
-                </button>
+                <div className="d-flex gap-2">
+                  <button
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={fetchSLADefinitions}
+                    disabled={loading}
+                  >
+                    🔄 Refresh
+                  </button>
+                  <button className="btn btn-success btn-sm" onClick={handleCreate}>
+                    + Add SLA Definition
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -832,6 +894,7 @@ const SLADefinitions = () => {
                 </div>
                 <div className="modal-body">
                   <p>Are you sure you want to delete this SLA definition?</p>
+                  <p className="text-muted">This action cannot be undone and may affect related SLA conditions.</p>
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setDeleteModal(false)}>

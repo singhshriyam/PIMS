@@ -432,6 +432,18 @@ const SLAConditions: React.FC = () => {
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenDropdown(null);
+    };
+
+    if (openDropdown !== null) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openDropdown]);
+
   if (loading || loadingMasterData) {
     return (
       <div className="container-fluid">
@@ -561,7 +573,15 @@ const SLAConditions: React.FC = () => {
                           <td>{formatDate(condition.created_at)}</td>
                           <td>
                             <div className="position-relative">
-                              <button className="btn btn-sm" onClick={() => toggleDropdown(condition.id)}>≡</button>
+                              <button
+                                className="btn btn-sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleDropdown(condition.id);
+                                }}
+                              >
+                                ≡
+                              </button>
                               {openDropdown === condition.id && (
                                 <div className="position-absolute bg-white border rounded shadow"
                                      style={{ top: '100%', right: 0, zIndex: 1000, minWidth: '120px' }}>

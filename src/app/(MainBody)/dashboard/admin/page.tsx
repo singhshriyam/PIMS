@@ -180,10 +180,10 @@ const AdminDashboard = () => {
 
     const currentUser = getCurrentUser()
     setUser({
-      name: currentUser?.name || 'Administrator',
-      team: currentUser?.team || 'Administrator',
+      name: currentUser?.first_name || 'Administrator',
+      team: currentUser?.team_name || 'Administrator',
       email: currentUser?.email || '',
-      userId: currentUser?.id || ''
+      userId: String(currentUser?.id || '')
     })
 
     // Load assets data
