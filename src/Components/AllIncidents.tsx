@@ -2,14 +2,15 @@
 import React, { useState, useEffect } from 'react'
 import {
   Container, Row, Col, Card, CardBody, CardHeader,
-  Button, Input, Badge, Alert
+  Button, Input, Badge, Alert, Nav, NavItem, NavLink, TabContent, TabPane
 } from 'reactstrap'
 import { useRouter } from 'next/navigation'
 import {
   getCurrentUser,
   isAuthenticated,
   getUserDashboard,
-  User
+  User,
+  getStoredToken
 } from '../app/(MainBody)/services/userService'
 import {
   fetchHandlerIncidents,
@@ -39,6 +40,22 @@ interface AllIncidentsProps {
   initialStatusFilter?: string | null
 }
 
+interface AssignmentRecord {
+  id: number
+  incident_id: number
+  from: number
+  to: number
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+interface EnrichedAssignment extends AssignmentRecord {
+  incident?: Incident
+  fromUser?: User
+  toUser?: User
+}
+
 const AllIncidents: React.FC<AllIncidentsProps> = ({
   userType,
   onBack,
@@ -49,9 +66,15 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
   // State Management
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [filteredIncidents, setFilteredIncidents] = useState<Incident[]>([])
+  const [assignedIncidents, setAssignedIncidents] = useState<EnrichedAssignment[]>([])
+  const [filteredAssignedIncidents, setFilteredAssignedIncidents] = useState<EnrichedAssignment[]>([])
   const [loading, setLoading] = useState(true)
+  const [assignedLoading, setAssignedLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
+
+  // Tab Management for Handler
+  const [activeTab, setActiveTab] = useState('my_incidents')
 
   // Master data for ID to name mapping
   const [masterData, setMasterData] = useState({
@@ -66,11 +89,13 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
+  const [assignedCurrentPage, setAssignedCurrentPage] = useState(1)
   const itemsPerPage = 10
 
   // Filters
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || 'all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [assignedSearchTerm, setAssignedSearchTerm] = useState('')
 
   // Modals
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
@@ -81,6 +106,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
   // Permission Helpers
   const isEndUser = () => userType?.toLowerCase().includes('enduser')
   const isFieldEngineer = () => userType?.toLowerCase().includes('field_engineer')
+  const isHandler = () => userType?.toLowerCase().includes('handler')
   const hasFullEditPermissions = () => {
     const type = userType?.toLowerCase() || ''
     return type.includes('handler') || type.includes('manager') ||
@@ -90,36 +116,46 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
   // Data Helpers - Using master data to map IDs to names
   const getCategoryName = (incident: Incident): string => {
     const category = masterData.categories.find(cat => cat.id === incident.category_id);
-    return category ? category.name : `Category ${incident.category_id}`;
+    return category?.name || '';
   };
-
 
   const getPriorityName = (incident: Incident): string => {
     if (incident.priority_id) {
       const priority = masterData.impacts.find(imp => imp.id === incident.priority_id)
-      return priority ? priority.name : `Priority ${incident.priority_id}`
+      return priority?.name || ''
     }
     if (incident.urgency_id) {
       const urgency = masterData.urgencies.find(urg => urg.id === incident.urgency_id)
-      return urgency ? urgency.name : `Urgency ${incident.urgency_id}`
+      return urgency?.name || ''
     }
-    return 'Medium'
+    return ''
   }
 
   const getCallerName = (incident: Incident): string => {
-    if (!incident.user_id) return 'Unknown User'
+    if (!incident.user_id) return ''
     const user = masterData.users.find(u => u.id === incident.user_id)
     if (user) {
       const fullName = user.last_name
         ? `${user.first_name} ${user.last_name}`
         : user.first_name
-      return fullName || user.email || `User ${incident.user_id}`
+      return fullName || user.email || ''
     }
-    return `User ${incident.user_id}`
+    return ''
+  }
+
+  const getUserName = (userId: number): string => {
+    const user = masterData.users.find(u => u.id === userId)
+    if (user) {
+      const fullName = user.last_name
+        ? `${user.first_name} ${user.last_name}`
+        : user.first_name
+      return fullName || user.email || ''
+    }
+    return 'Unknown User'
   }
 
   const getIncidentNumber = (incident: Incident): string => {
-    return incident.incident_no || incident.id?.toString() || 'Unknown'
+    return incident.incident_no || ''
   }
 
   const getAssignedTo = (incident: Incident): string => {
@@ -129,45 +165,23 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
       const fullName = user.last_name
         ? `${user.first_name} ${user.last_name}`
         : user.first_name
-      return fullName || user.email || `User ${incident.assigned_to_id}`
+      return fullName || user.email || ''
     }
-    return `User ${incident.assigned_to_id}`
+    return ''
   }
 
   const getStatus = (incident: Incident): string => {
-    if (!incident.incidentstate_id) return 'pending'
+    if (!incident.incidentstate_id) return ''
     const state = masterData.incidentStates.find(st => st.id === incident.incidentstate_id)
-    if (state) {
-      const stateName = state.name.toLowerCase()
-      if (stateName === 'new') return 'pending'
-      if (stateName === 'inprogress' || stateName === 'in progress') return 'in_progress'
-      if (stateName === 'resolved') return 'resolved'
-      if (stateName === 'closed') return 'closed'
-      return stateName
-    }
-    // Fallback to ID mapping
-    switch (incident.incidentstate_id) {
-      case 1:
-      case 2:
-        return 'pending'
-      case 3:
-      case 4:
-        return 'in_progress'
-      case 5:
-        return 'resolved'
-      case 6:
-        return 'closed'
-      default:
-        return 'pending'
-    }
+    return state?.name || ''
   }
 
   const formatDateOnly = (dateString: string) => {
+    if (!dateString) return ''
     try {
-      if (!dateString) return 'Unknown'
       return new Date(dateString).toLocaleDateString()
-    } catch (error) {
-      return 'Unknown'
+    } catch {
+      return ''
     }
   }
 
@@ -194,13 +208,93 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
         loaded: true
       })
     } catch (error) {
-      console.error('Failed to load master data:', error)
-      // Continue without master data - will show IDs instead of names
       setMasterData(prev => ({ ...prev, loaded: true }))
     }
   }
 
-  // Data Fetching
+  // Fetch Handler's Assigned Incidents using all-incidents API
+  const fetchHandlerAssignedIncidents = async () => {
+    if (!isHandler() || !user?.id) return
+
+    try {
+      setAssignedLoading(true)
+      const token = getStoredToken()
+      if (!token) return
+
+      // Fetch all incidents from the API endpoint
+      const response = await fetch('https://apexwpc.apextechno.co.uk/api/all-incidents', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch all incidents: ${response.status}`)
+      }
+
+      const result = await response.json()
+      const allIncidents = result.success ? (result.data || []) : []
+
+      const assignedIncidentsList: EnrichedAssignment[] = []
+
+      // Check assignment history for each incident
+      for (const incident of allIncidents) {
+        try {
+          const assignmentResponse = await fetch(`https://apexwpc.apextechno.co.uk/api/incident-handler/incident-assignment/${incident.id}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: new URLSearchParams()
+          })
+
+          if (assignmentResponse.ok) {
+            const assignmentResult = await assignmentResponse.json()
+
+            if (assignmentResult.success && assignmentResult.data && Array.isArray(assignmentResult.data) && assignmentResult.data.length > 0) {
+              // Get the latest assignment
+              const latestAssignment = assignmentResult.data
+                .sort((a: AssignmentRecord, b: AssignmentRecord) =>
+                  new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                )[0]
+
+              // If handler made the latest assignment and it's assigned to someone else
+              if (latestAssignment && latestAssignment.from === user.id && latestAssignment.to !== user.id) {
+                assignedIncidentsList.push({
+                  ...latestAssignment,
+                  incident,
+                  fromUser: masterData.users.find(u => u.id === latestAssignment.from),
+                  toUser: masterData.users.find(u => u.id === latestAssignment.to)
+                })
+              }
+            }
+          }
+        } catch (error) {
+          // Silently continue on individual assignment check failures
+          continue
+        }
+
+        // Small delay to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+
+      // Sort by assignment date (newest first)
+      assignedIncidentsList.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+
+      setAssignedIncidents(assignedIncidentsList)
+      setFilteredAssignedIncidents(assignedIncidentsList)
+
+    } catch (error) {
+      setError('Failed to load assigned incidents')
+    } finally {
+      setAssignedLoading(false)
+    }
+  }
+
+  // Data Fetching - Show only ACTIVE incidents (1=New, 2=InProgress, 3=OnHold)
   const fetchData = async () => {
     try {
       setLoading(true)
@@ -229,16 +323,20 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
         fetchedIncidents = await fetchEndUserIncidents()
       }
 
-      fetchedIncidents.sort((a, b) =>
+      // Filter to show ONLY active incidents (1=New, 2=InProgress, 3=OnHold)
+      const activeIncidents = fetchedIncidents.filter(incident => {
+        return incident.incidentstate_id === 1 || incident.incidentstate_id === 2 || incident.incidentstate_id === 3
+      })
+
+      activeIncidents.sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
 
-      setIncidents(fetchedIncidents)
-      setFilteredIncidents(fetchedIncidents)
+      setIncidents(activeIncidents)
+      setFilteredIncidents(activeIncidents)
       setCurrentPage(1)
 
     } catch (error: any) {
-      console.error('Fetch incidents error:', error)
       setError(error.message || 'Failed to load incidents')
       setIncidents([])
       setFilteredIncidents([])
@@ -247,14 +345,14 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
     }
   }
 
-  // Filtering
+  // Filtering for My Incidents
   useEffect(() => {
     let filtered = [...incidents]
 
     if (statusFilter !== 'all') {
       filtered = filtered.filter(incident => {
-        const incidentStatus = getStatus(incident)
-        return incidentStatus === statusFilter
+        const state = masterData.incidentStates.find(st => st.id === incident.incidentstate_id)
+        return state?.name?.toLowerCase() === statusFilter.toLowerCase()
       })
     }
 
@@ -272,22 +370,56 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
     setCurrentPage(1)
   }, [incidents, statusFilter, searchTerm])
 
+  // Filtering for Assigned Incidents
+  useEffect(() => {
+    let filtered = [...assignedIncidents]
+
+    if (assignedSearchTerm) {
+      const term = assignedSearchTerm.toLowerCase()
+      filtered = filtered.filter(assignment =>
+        getIncidentNumber(assignment.incident || {} as Incident).toLowerCase().includes(term) ||
+        getCategoryName(assignment.incident || {} as Incident).toLowerCase().includes(term) ||
+        assignment.incident?.short_description?.toLowerCase().includes(term) ||
+        getUserName(assignment.to).toLowerCase().includes(term)
+      )
+    }
+
+    setFilteredAssignedIncidents(filtered)
+    setAssignedCurrentPage(1)
+  }, [assignedIncidents, assignedSearchTerm])
+
   useEffect(() => {
     if (initialStatusFilter) {
       setStatusFilter(initialStatusFilter)
     }
   }, [initialStatusFilter])
 
-  // Pagination
+  // Load assigned incidents when master data is loaded
+  useEffect(() => {
+    if (masterData.loaded && isHandler() && user?.id) {
+      fetchHandlerAssignedIncidents()
+    }
+  }, [masterData.loaded, user?.id])
+
+  // Pagination for My Incidents
   const totalPages = Math.ceil(filteredIncidents.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const currentIncidents = filteredIncidents.slice(startIndex, startIndex + itemsPerPage)
+
+  // Pagination for Assigned Incidents
+  const assignedTotalPages = Math.ceil(filteredAssignedIncidents.length / itemsPerPage)
+  const assignedStartIndex = (assignedCurrentPage - 1) * itemsPerPage
+  const currentAssignedIncidents = filteredAssignedIncidents.slice(assignedStartIndex, assignedStartIndex + itemsPerPage)
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
   }
 
-  const renderPaginationButtons = () => {
+  const handleAssignedPageChange = (page: number) => {
+    setAssignedCurrentPage(page)
+  }
+
+  const renderPaginationButtons = (currentPage: number, totalPages: number, onPageChange: (page: number) => void) => {
     const buttons = []
     const maxVisibleButtons = 5
     let startPage = Math.max(1, currentPage - Math.floor(maxVisibleButtons / 2))
@@ -303,7 +435,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
           key="prev"
           color="outline-primary"
           size="sm"
-          onClick={() => handlePageChange(currentPage - 1)}
+          onClick={() => onPageChange(currentPage - 1)}
           className="me-1"
         >
           ‹
@@ -317,7 +449,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
           key={i}
           color={i === currentPage ? "primary" : "outline-primary"}
           size="sm"
-          onClick={() => handlePageChange(i)}
+          onClick={() => onPageChange(i)}
           className="me-1"
         >
           {i}
@@ -331,7 +463,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
           key="next"
           color="outline-primary"
           size="sm"
-          onClick={() => handlePageChange(currentPage + 1)}
+          onClick={() => onPageChange(currentPage + 1)}
           className="me-1"
         >
           ›
@@ -357,12 +489,10 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
     setShowViewModal(true)
   }
 
-  const handleEditIncident = (incident: Incident) => {
+  const handleEditIncident = (incident: Incident, readOnly: boolean = false) => {
     try {
-      // Set to null first to clear any problematic state
       setEditingIncident(null)
 
-      // Then set a completely safe object with ALL details
       setEditingIncident({
         id: incident.id,
         user_id: incident.user_id,
@@ -392,11 +522,11 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
         updated_by_id: incident.updated_by_id,
         created_at: incident.created_at || '',
         updated_at: incident.updated_at || '',
-        deleted_at: incident.deleted_at || ''
+        deleted_at: incident.deleted_at || '',
+        readOnly: readOnly
       })
       setShowEditModal(true)
     } catch (error) {
-      console.error('Error preparing incident for edit:', error)
       setError('Failed to open incident for editing')
     }
   }
@@ -413,7 +543,19 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
   }
 
   // Action Buttons
-  const renderActionButtons = (incident: Incident) => {
+  const renderActionButtons = (incident: Incident, readOnly: boolean = false) => {
+    if (readOnly) {
+      return (
+        <Button
+          color="outline-info"
+          size="sm"
+          onClick={() => handleEditIncident(incident, true)}
+        >
+          View Details
+        </Button>
+      )
+    }
+
     if (hasFullEditPermissions()) {
       return (
         <Button
@@ -444,13 +586,6 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
           >
             View
           </Button>
-          {/* <Button
-            color="outline-warning"
-            size="sm"
-            onClick={() => handleEditIncident(incident)}
-          >
-            Edit
-          </Button> */}
         </div>
       )
     } else {
@@ -473,7 +608,6 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
       return
     }
 
-    // Load master data first, then fetch incidents
     const initializeData = async () => {
       await loadMasterData()
       await fetchData()
@@ -523,6 +657,7 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
         userType={userType}
         onClose={handleCloseEdit}
         onSave={handleCloseEdit}
+        readOnly={editingIncident.readOnly || false}
       />
     )
   }
@@ -539,9 +674,9 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
               <CardBody>
                 <div className="d-flex justify-content-between align-items-center">
                   <div>
-                    <h4 className="mb-1">All Incidents</h4>
+                    <h4 className="mb-1">Active Incidents</h4>
                     <small className="text-muted">
-                      View and track all incidents ({filteredIncidents.length} total)
+                      View and track active incidents (New, InProgress, OnHold)
                     </small>
                   </div>
                   <div>
@@ -559,181 +694,376 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
           </Col>
         </Row>
 
-        {/* Filters */}
-        <Row>
-          <Col xs={12}>
-            <Card>
-              <CardHeader>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5>Filter Incidents</h5>
-                  <Button
-                    color="outline-primary"
-                    size="sm"
-                    onClick={fetchData}
+        {/* Tabs for Handler */}
+        {isHandler() && (
+          <Row>
+            <Col xs={12}>
+              <Nav tabs className="mb-3">
+                <NavItem>
+                  <NavLink
+                    className={activeTab === 'my_incidents' ? 'active' : ''}
+                    onClick={() => setActiveTab('my_incidents')}
+                    style={{ cursor: 'pointer' }}
                   >
-                    Refresh
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardBody>
-                <Row>
-                  <Col md={6}>
-                    <label>Search</label>
-                    <Input
-                      type="text"
-                      placeholder="Search by number, caller, description..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </Col>
-                  <Col md={6}>
-                    <label>Status</label>
-                    <Input
-                      type="select"
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                      <option value="all">All Statuses</option>
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="closed">Closed</option>
-                    </Input>
-                  </Col>
-                </Row>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
+                    My Incidents ({filteredIncidents.length})
+                  </NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink
+                    className={activeTab === 'assigned_incidents' ? 'active' : ''}
+                    onClick={() => setActiveTab('assigned_incidents')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Assigned to Others ({filteredAssignedIncidents.length})
+                  </NavLink>
+                </NavItem>
+              </Nav>
+            </Col>
+          </Row>
+        )}
 
-        {/* Incidents Table */}
-        <Row>
-          <Col xs={12}>
-            <Card>
-              <CardHeader>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5>
-                    {hasFullEditPermissions() ? 'All System Incidents' : 'My Incidents'} ({filteredIncidents.length})
-                  </h5>
-                  <div>
-                    <small className="text-muted">
-                      Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredIncidents.length)} of {filteredIncidents.length}
-                    </small>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardBody>
-                {filteredIncidents.length === 0 ? (
-                  <div className="text-center py-4">
-                    <h6 className="text-muted">No incidents found</h6>
-                    <p className="text-muted">No incidents match your current criteria.</p>
-                    <Button color="primary" onClick={fetchData}>
-                      Refresh Data
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="table-responsive">
-                      <table className="table table-hover">
-                        <thead>
-                          <tr>
-                            <th>Incident</th>
-                            <th>Category</th>
-                            <th>Status</th>
-                            {hasFullEditPermissions() && <th>Priority</th>}
-                            {hasFullEditPermissions() && <th>Caller</th>}
-                            {isFieldEngineer() && <th>Location</th>}
-                            {!hasFullEditPermissions() && !isFieldEngineer() && <th>Assigned</th>}
-                            <th>Created</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {currentIncidents.map((incident) => (
-                            <tr key={incident.id}>
-                              <td>
-                                <span className="fw-medium text-primary">
-                                  {getIncidentNumber(incident)}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="fw-medium text-dark">
-                                  {getCategoryName(incident)}
-                                </div>
-                              </td>
-                              <td>
-                                <Badge
-                                  style={{
-                                    backgroundColor: getStatusColor(getStatus(incident)),
-                                    color: 'white'
-                                  }}
-                                >
-                                  {getStatus(incident).replace('_', ' ')}
-                                </Badge>
-                              </td>
-                              {hasFullEditPermissions() && (
-                                <td>
-                                  <Badge
-                                    style={{
-                                      backgroundColor: getPriorityColor(getPriorityName(incident)),
-                                      color: 'white'
-                                    }}
-                                  >
-                                    {getPriorityName(incident)}
-                                  </Badge>
-                                </td>
-                              )}
-                              {hasFullEditPermissions() && (
-                                <td>
-                                  <div className="fw-medium text-dark">
-                                    {getCallerName(incident)}
-                                  </div>
-                                </td>
-                              )}
-                              {isFieldEngineer() && (
-                                <td>
-                                  <small className="text-muted">
-                                    {incident.address || 'Not specified'}
-                                  </small>
-                                </td>
-                              )}
-                              {!hasFullEditPermissions() && !isFieldEngineer() && (
-                                <td>
-                                  <small className="text-muted">
-                                    {getAssignedTo(incident)}
-                                  </small>
-                                </td>
-                              )}
-                              <td>
-                                <small className="text-dark">
-                                  {formatDateOnly(incident.created_at)}
-                                </small>
-                              </td>
-                              <td>
-                                {renderActionButtons(incident)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+        <TabContent activeTab={isHandler() ? activeTab : 'my_incidents'}>
+          {/* My Incidents Tab */}
+          <TabPane tabId="my_incidents">
+            {/* Filters */}
+            <Row>
+              <Col xs={12}>
+                <Card>
+                  <CardHeader>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <h5>Filter Active Incidents</h5>
+                      <Button
+                        color="outline-primary"
+                        size="sm"
+                        onClick={fetchData}
+                      >
+                        Refresh
+                      </Button>
                     </div>
+                  </CardHeader>
+                  <CardBody>
+                    <Row>
+                      <Col md={6}>
+                        <label>Search</label>
+                        <Input
+                          type="text"
+                          placeholder="Search by number, caller, description..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <label>Status</label>
+                        <Input
+                          type="select"
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                          <option value="all">All Active Statuses</option>
+                          <option value="new">New</option>
+                          <option value="inprogress">InProgress</option>
+                          <option value="onhold">OnHold</option>
+                        </Input>
+                      </Col>
+                    </Row>
+                  </CardBody>
+                </Card>
+              </Col>
+            </Row>
 
-                    {totalPages > 1 && (
-                      <div className="d-flex justify-content-between align-items-center mt-3">
+            {/* Incidents Table */}
+            <Row>
+              <Col xs={12}>
+                <Card>
+                  <CardHeader>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <h5>
+                        {hasFullEditPermissions() ? 'All Active Incidents' : 'My Active Incidents'} ({filteredIncidents.length})
+                      </h5>
+                      <div>
+                        <small className="text-muted">
+                          Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredIncidents.length)} of {filteredIncidents.length}
+                        </small>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardBody>
+                    {filteredIncidents.length === 0 ? (
+                      <div className="text-center py-4">
+                        <h6 className="text-muted">No active incidents found</h6>
+                        <p className="text-muted">No active incidents match your current criteria.</p>
+                        <Button color="primary" onClick={fetchData}>
+                          Refresh Data
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="table-responsive">
+                          <table className="table table-hover">
+                            <thead>
+                              <tr>
+                                <th>Incident</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                {hasFullEditPermissions() && <th>Priority</th>}
+                                {hasFullEditPermissions() && <th>Caller</th>}
+                                {isFieldEngineer() && <th>Location</th>}
+                                {!hasFullEditPermissions() && !isFieldEngineer() && <th>Assigned</th>}
+                                <th>Created</th>
+                                <th>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {currentIncidents.map((incident) => (
+                                <tr key={incident.id}>
+                                  <td>
+                                    <span className="fw-medium text-primary">
+                                      {getIncidentNumber(incident)}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <div className="fw-medium text-dark">
+                                      {getCategoryName(incident)}
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <Badge
+                                      style={{
+                                        backgroundColor: getStatusColor(getStatus(incident)),
+                                        color: 'white'
+                                      }}
+                                    >
+                                      {getStatus(incident)}
+                                    </Badge>
+                                  </td>
+                                  {hasFullEditPermissions() && (
+                                    <td>
+                                      <Badge
+                                        style={{
+                                          backgroundColor: getPriorityColor(getPriorityName(incident)),
+                                          color: 'white'
+                                        }}
+                                      >
+                                        {getPriorityName(incident)}
+                                      </Badge>
+                                    </td>
+                                  )}
+                                  {hasFullEditPermissions() && (
+                                    <td>
+                                      <div className="fw-medium text-dark">
+                                        {getCallerName(incident)}
+                                      </div>
+                                    </td>
+                                  )}
+                                  {isFieldEngineer() && (
+                                    <td>
+                                      <small className="text-muted">
+                                        {incident.address || ''}
+                                      </small>
+                                    </td>
+                                  )}
+                                  {!hasFullEditPermissions() && !isFieldEngineer() && (
+                                    <td>
+                                      <small className="text-muted">
+                                        {getAssignedTo(incident)}
+                                      </small>
+                                    </td>
+                                  )}
+                                  <td>
+                                    <small className="text-dark">
+                                      {formatDateOnly(incident.created_at)}
+                                    </small>
+                                  </td>
+                                  <td>
+                                    {renderActionButtons(incident)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {totalPages > 1 && (
+                          <div className="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                              <small className="text-muted">
+                                Page {currentPage} of {totalPages}
+                              </small>
+                            </div>
+                            <div>{renderPaginationButtons(currentPage, totalPages, handlePageChange)}</div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </CardBody>
+                </Card>
+              </Col>
+            </Row>
+          </TabPane>
+
+          {/* Assigned Incidents Tab (Handler Only) */}
+          {isHandler() && (
+            <TabPane tabId="assigned_incidents">
+              {/* Filters for Assigned Incidents */}
+              <Row>
+                <Col xs={12}>
+                  <Card>
+                    <CardHeader>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <h5>Filter Assigned Incidents</h5>
+                        <Button
+                          color="outline-primary"
+                          size="sm"
+                          onClick={fetchHandlerAssignedIncidents}
+                          disabled={assignedLoading}
+                        >
+                          {assignedLoading ? 'Loading...' : 'Refresh'}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardBody>
+                      <Row>
+                        <Col md={6}>
+                          <label>Search</label>
+                          <Input
+                            type="text"
+                            placeholder="Search by incident number, category, assigned to..."
+                            value={assignedSearchTerm}
+                            onChange={(e) => setAssignedSearchTerm(e.target.value)}
+                          />
+                        </Col>
+                                  <Col md={6}>
+                          <div className="d-flex align-items-end h-100">
+                            <small className="text-muted">
+                              Incidents you have assigned to other team members (read-only access)
+                            </small>
+                          </div>
+                        </Col>
+                      </Row>
+                    </CardBody>
+                  </Card>
+                </Col>
+              </Row>
+
+              {/* Assigned Incidents Table */}
+              <Row>
+                <Col xs={12}>
+                  <Card>
+                    <CardHeader>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <h5>
+                          Incidents Assigned to Others ({filteredAssignedIncidents.length})
+                        </h5>
                         <div>
                           <small className="text-muted">
-                            Page {currentPage} of {totalPages}
+                            Showing {assignedStartIndex + 1}-{Math.min(assignedStartIndex + itemsPerPage, filteredAssignedIncidents.length)} of {filteredAssignedIncidents.length}
                           </small>
                         </div>
-                        <div>{renderPaginationButtons()}</div>
                       </div>
-                    )}
-                  </>
-                )}
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
+                    </CardHeader>
+                    <CardBody>
+                      {assignedLoading ? (
+                        <div className="text-center py-4">
+                          <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Loading assigned incidents...</span>
+                          </div>
+                          <p className="mt-3 text-muted">Loading assigned incidents...</p>
+                        </div>
+                      ) : filteredAssignedIncidents.length === 0 ? (
+                        <div className="text-center py-4">
+                          <h6 className="text-muted">No assigned incidents found</h6>
+                          <p className="text-muted">
+                            You haven't assigned any incidents to other team members yet.
+                          </p>
+                          <Button color="primary" onClick={fetchHandlerAssignedIncidents}>
+                            Refresh Data
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="table-responsive">
+                            <table className="table table-hover">
+                              <thead>
+                                <tr>
+                                  <th>Incident Number</th>
+                                  <th>Category</th>
+                                  <th>Assigned To</th>
+                                  <th>Assignment Date</th>
+                                  <th>Current Status</th>
+                                  <th>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {currentAssignedIncidents.map((assignment) => (
+                                  <tr key={assignment.id}>
+                                    <td>
+                                      <span className="fw-medium text-primary">
+                                        {assignment.incident ? getIncidentNumber(assignment.incident) : 'N/A'}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <div className="fw-medium text-dark">
+                                        {assignment.incident ? getCategoryName(assignment.incident) : 'No category available'}
+                                      </div>
+                                      {assignment.incident?.short_description && (
+                                        <small className="text-muted">
+                                          {assignment.incident.short_description.length > 50
+                                            ? `${assignment.incident.short_description.substring(0, 50)}...`
+                                            : assignment.incident.short_description
+                                          }
+                                        </small>
+                                      )}
+                                    </td>
+                                    <td>
+                                      <div className="fw-medium text-dark">
+                                        {getUserName(assignment.to)}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <small className="text-dark">
+                                        {formatDateOnly(assignment.created_at)}
+                                      </small>
+                                    </td>
+                                    <td>
+                                      {assignment.incident && (
+                                        <Badge
+                                          style={{
+                                            backgroundColor: getStatusColor(getStatus(assignment.incident)),
+                                            color: 'white'
+                                          }}
+                                        >
+                                          {getStatus(assignment.incident)}
+                                        </Badge>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {assignment.incident && renderActionButtons(assignment.incident, true)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {assignedTotalPages > 1 && (
+                            <div className="d-flex justify-content-between align-items-center mt-3">
+                              <div>
+                                <small className="text-muted">
+                                  Page {assignedCurrentPage} of {assignedTotalPages}
+                                </small>
+                              </div>
+                              <div>{renderPaginationButtons(assignedCurrentPage, assignedTotalPages, handleAssignedPageChange)}</div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardBody>
+                  </Card>
+                </Col>
+              </Row>
+            </TabPane>
+          )}
+        </TabContent>
       </Container>
 
       {/* View Modal */}
@@ -745,13 +1075,14 @@ const AllIncidents: React.FC<AllIncidentsProps> = ({
         />
       )}
 
-      {/* Edit Modal - ALL DETAILS SAFE VERSION */}
+      {/* Edit Modal */}
       {showEditModal && editingIncident && (
         <EditIncident
           incident={editingIncident}
           userType={userType}
           onClose={handleCloseEdit}
           onSave={handleCloseEdit}
+          readOnly={editingIncident.readOnly || false}
         />
       )}
     </>

@@ -26,12 +26,9 @@ import {
   type Incident
 } from '../../services/incidentService'
 import EditIncident from '../../../../Components/EditIncident'
-import AssignIncidents from '../../../../Components/AssignIncidents'
 
 const FieldEngineerDashboard = () => {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const view = searchParams?.get('view')
 
   // State
   const [incidents, setIncidents] = useState<Incident[]>([])
@@ -47,13 +44,13 @@ const FieldEngineerDashboard = () => {
 
   const itemsPerPage = 10
 
-  // Helper functions
+  // Helper functions - Use API data directly
   const getIncidentNumber = (incident: Incident) => {
     return incident.incident_no || `INC-${incident.id}`
   }
 
   const getCategoryName = (incident: Incident) => {
-    return incident.category_name || incident.category?.name || 'Uncategorized'
+    return incident.category_name || incident.category?.name || ''
   }
 
   const getStatus = (incident: Incident) => {
@@ -61,44 +58,24 @@ const FieldEngineerDashboard = () => {
       return incident.incidentstate
     }
 
-    // Get status name from the flat field
     const stateName = (incident as any).incidentstate_name || incident.incidentstate?.name
-
-    if (!stateName) return 'pending'
-
-    const state = stateName.toLowerCase().trim()
-
-    // Map API status names to display values
-    switch (state) {
-      case 'new':
-        return 'pending'
-      case 'inprogress':
-        return 'in_progress'
-      case 'resolved':
-        return 'resolved'
-      case 'closed':
-        return 'closed'
-      case 'cancelled':
-      case 'canceled':
-        return 'cancelled'
-      default:
-        return 'pending'
-    }
+    return stateName || ''
   }
 
   const getShortDescription = (incident: Incident) => {
-    return incident.short_description || 'No description'
+    return incident.short_description || ''
   }
 
   const getAddress = (incident: Incident) => {
-    return incident.address || 'Not specified'
+    return incident.address || ''
   }
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return ''
     try {
       return new Date(dateString).toLocaleDateString()
     } catch {
-      return 'Unknown'
+      return ''
     }
   }
 
@@ -127,7 +104,6 @@ const FieldEngineerDashboard = () => {
       setLoading(false)
 
     } catch (error: any) {
-      console.error('Field Engineer Dashboard error:', error)
       setError(error.message || 'Failed to load assignments')
       setLoading(false)
     }
@@ -162,7 +138,10 @@ const FieldEngineerDashboard = () => {
     let filtered = [...incidents]
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(incident => getStatus(incident) === statusFilter)
+      filtered = filtered.filter(incident => {
+        const status = getStatus(incident)
+        return status.toLowerCase() === statusFilter.toLowerCase()
+      })
     }
 
     if (searchTerm) {
@@ -178,16 +157,6 @@ const FieldEngineerDashboard = () => {
     setFilteredIncidents(filtered)
     setCurrentPage(1)
   }, [incidents, statusFilter, searchTerm])
-
-  // Route handling
-  if (view === 'assign-incidents') {
-    return (
-      <AssignIncidents
-        userType="field_engineer"
-        onBack={() => router.push('/dashboard/field_engineer')}
-      />
-    )
-  }
 
   // Loading state
   if (loading) {
@@ -248,6 +217,7 @@ const FieldEngineerDashboard = () => {
               <div className="d-flex justify-content-between align-items-center">
                 <div>
                   <h4 className="mb-1">Welcome back, {user?.first_name || 'Field Engineer'}!</h4>
+                  <small className="text-muted">Manage your field assignments ({filteredIncidents.length} total)</small>
                 </div>
               </div>
             </CardBody>
@@ -255,13 +225,13 @@ const FieldEngineerDashboard = () => {
         </Col>
       </Row>
 
-      {/* Stats
+      {/* Stats Cards */}
       <Row>
         {[
-          { value: stats.total, label: 'Total Assignments' },
-          { value: stats.inProgress, label: 'In Progress' },
-          { value: stats.resolved, label: 'Completed' },
-          { value: stats.pending, label: 'Pending' }
+          { value: stats.total, label: 'Total Assignments', color: 'primary' },
+          { value: stats.inProgress, label: 'In Progress', color: 'info' },
+          { value: stats.resolved, label: 'Completed', color: 'success' },
+          { value: stats.pending, label: 'Pending', color: 'warning' }
         ].map((stat, index) => (
           <Col xl={3} md={6} key={index}>
             <Card className="o-hidden">
@@ -274,7 +244,7 @@ const FieldEngineerDashboard = () => {
             </Card>
           </Col>
         ))}
-      </Row> */}
+      </Row>
 
       {/* Filters */}
       <Row>
@@ -299,10 +269,12 @@ const FieldEngineerDashboard = () => {
                     onChange={(e) => setStatusFilter(e.target.value)}
                   >
                     <option value="all">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="in_progress">In Progress</option>
+                    <option value="new">New</option>
+                    <option value="inprogress">InProgress</option>
+                    <option value="onhold">OnHold</option>
                     <option value="resolved">Resolved</option>
                     <option value="closed">Closed</option>
+                    <option value="cancelled">Cancelled</option>
                   </Input>
                 </Col>
               </Row>
@@ -318,6 +290,9 @@ const FieldEngineerDashboard = () => {
             <CardHeader>
               <div className="d-flex justify-content-between align-items-center">
                 <h5>🔧 My Field Assignments ({filteredIncidents.length})</h5>
+                <Button color="outline-primary" size="sm" onClick={handleRefresh}>
+                  Refresh
+                </Button>
               </div>
             </CardHeader>
             <CardBody>
@@ -364,7 +339,7 @@ const FieldEngineerDashboard = () => {
                                   color: 'white'
                                 }}
                               >
-                                {getStatus(incident).replace('_', ' ')}
+                                {getStatus(incident)}
                               </Badge>
                             </td>
                             <td>

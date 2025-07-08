@@ -17,11 +17,10 @@ import {
   type Incident
 } from '../../services/incidentService'
 import AllIncidents from '../../../../Components/AllIncidents'
+import ResolvedIncidents from '../../../../Components/ResolvedIncidents'
 
-// Dynamic chart import
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
-// ============ INTERFACES ============
 interface DashboardState {
   myIncidents: Incident[]
   loading: boolean
@@ -35,18 +34,16 @@ interface UserState {
   userId: string
 }
 
-// ============ MAIN COMPONENT ============
 const EndUserDashboard = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Check if we should show all incidents
   const viewParam = searchParams.get('view')
   const statusParam = searchParams.get('status')
   const [showAllIncidents, setShowAllIncidents] = useState(viewParam === 'all-incidents')
+  const [showResolvedIncidents, setShowResolvedIncidents] = useState(viewParam === 'resolved-incidents')
   const [filterByStatus, setFilterByStatus] = useState<string | null>(statusParam)
 
-  // State management
   const [dashboardData, setDashboardData] = useState<DashboardState>({
     myIncidents: [],
     loading: true,
@@ -60,11 +57,11 @@ const EndUserDashboard = () => {
     userId: ''
   })
 
-  // ============ DATA HELPERS ============
+  // Data Helpers - Use API data directly
   const getCategoryName = (incident: Incident): string => {
     if (typeof incident.category === 'string') return incident.category
     if (typeof incident.category === 'object' && incident.category?.name) return incident.category.name
-    return 'Uncategorized'
+    return ''
   }
 
   const getAssignedToName = (incident: Incident): string => {
@@ -82,60 +79,46 @@ const EndUserDashboard = () => {
     if (incident.incident_no) return incident.incident_no
     if (typeof incident.id === 'string') return incident.id
     if (typeof incident.id === 'number') return incident.id.toString()
-    return 'Unknown'
+    return ''
   }
 
   const getStatus = (incident: Incident): string => {
-    // Handle different possible status formats from the backend
     if (typeof incident.incidentstate === 'string') {
-      return incident.incidentstate.toLowerCase().replace('_', ' ');
+      return incident.incidentstate;
     }
 
     if (incident.incidentstate && typeof incident.incidentstate === 'object' && incident.incidentstate.name) {
-      const state = incident.incidentstate.name.toLowerCase();
-      if (state === 'new') return 'pending';
-      if (state === 'inprogress') return 'in_progress';
-      if (state === 'resolved') return 'resolved';
-      if (state === 'closed') return 'closed';
-      return state;
+      return incident.incidentstate.name;
     }
 
-    // Fallback
-    return 'pending';
+    return '';
   }
 
   const formatDateLocal = (dateString: string) => {
+    if (!dateString) return ''
     try {
       return new Date(dateString).toLocaleDateString()
-    } catch (error) {
-      return 'Unknown'
+    } catch {
+      return ''
     }
   }
 
-  // ============ DATA FETCHING ============
+  // Data Fetching
   const fetchData = async () => {
     try {
-      console.log('=== DASHBOARD DEBUG START ===');
-      console.log('authToken exists:', !!getStoredToken());
-
       setDashboardData(prev => ({ ...prev, loading: true, error: null }))
 
-      // Check authentication first
       if (!isAuthenticated()) {
-        console.log('User not authenticated, redirecting to login');
         router.replace('/auth/login')
         return
       }
 
-      // Get current user data
       const currentUser = getCurrentUser()
-      console.log('getCurrentUser() result:', currentUser);
 
       if (!currentUser.id) {
         throw new Error('User ID not found. Please log in again.');
       }
 
-      // Set user state using direct user ID
       setUser({
         name: currentUser.first_name || 'User',
         team: currentUser.team_name || 'End User',
@@ -143,9 +126,7 @@ const EndUserDashboard = () => {
         userId: currentUser.id.toString()
       })
 
-      console.log('About to fetch end user incidents...');
       const userIncidents = await fetchEndUserIncidents()
-      console.log('Fetched incidents:', userIncidents);
 
       setDashboardData({
         myIncidents: userIncidents,
@@ -153,10 +134,7 @@ const EndUserDashboard = () => {
         error: null
       })
 
-      console.log('=== DASHBOARD DEBUG END ===');
-
     } catch (error: any) {
-      console.error('Dashboard fetch error:', error)
       setDashboardData(prev => ({
         ...prev,
         loading: false,
@@ -165,7 +143,7 @@ const EndUserDashboard = () => {
     }
   }
 
-  // ============ CHART DATA ============
+  // Chart Data
   const getMonthlyTrends = () => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
 
@@ -174,15 +152,21 @@ const EndUserDashboard = () => {
         try {
           const incidentMonth = new Date(incident.created_at).getMonth()
           return incidentMonth === index
-        } catch (error) {
+        } catch {
           return false
         }
       })
 
       return {
         reported: monthIncidents.length,
-        resolved: monthIncidents.filter(i => getStatus(i) === 'resolved').length,
-        inProgress: monthIncidents.filter(i => getStatus(i) === 'in_progress').length
+        resolved: monthIncidents.filter(i => {
+          const status = getStatus(i)
+          return status === 'Resolved'
+        }).length,
+        inProgress: monthIncidents.filter(i => {
+          const status = getStatus(i)
+          return status === 'InProgress'
+        }).length
       }
     })
 
@@ -194,20 +178,32 @@ const EndUserDashboard = () => {
     }
   }
 
-  // ============ EVENT HANDLERS ============
+  // Event Handlers
   const handleCreateIncident = () => {
     router.push('/dashboard?tab=create-incident')
   }
 
   const handleViewAllIncidents = () => {
     setShowAllIncidents(true)
+    setShowResolvedIncidents(false)
     const newUrl = new URL(window.location.href)
     newUrl.searchParams.set('view', 'all-incidents')
+    newUrl.searchParams.delete('status')
+    window.history.pushState({}, '', newUrl.toString())
+  }
+
+  const handleViewResolvedIncidents = () => {
+    setShowResolvedIncidents(true)
+    setShowAllIncidents(false)
+    const newUrl = new URL(window.location.href)
+    newUrl.searchParams.set('view', 'resolved-incidents')
+    newUrl.searchParams.delete('status')
     window.history.pushState({}, '', newUrl.toString())
   }
 
   const handleBackToDashboard = () => {
     setShowAllIncidents(false)
+    setShowResolvedIncidents(false)
     setFilterByStatus(null)
     const newUrl = new URL(window.location.href)
     newUrl.searchParams.delete('view')
@@ -224,9 +220,10 @@ const EndUserDashboard = () => {
     router.replace('/auth/login')
   }
 
-  // ============ CHART INTERACTIONS ============
+  // Chart Interactions
   const handleChartClick = (statusToFilter: string) => {
     setShowAllIncidents(true)
+    setShowResolvedIncidents(false)
     setFilterByStatus(statusToFilter)
 
     const newUrl = new URL(window.location.href)
@@ -235,7 +232,7 @@ const EndUserDashboard = () => {
     window.history.pushState({}, '', newUrl.toString())
   }
 
-  // ============ INITIALIZATION ============
+  // Initialization
   useEffect(() => {
     fetchData()
   }, [])
@@ -244,10 +241,11 @@ const EndUserDashboard = () => {
     const currentViewParam = searchParams.get('view')
     const currentStatusParam = searchParams.get('status')
     setShowAllIncidents(currentViewParam === 'all-incidents')
+    setShowResolvedIncidents(currentViewParam === 'resolved-incidents')
     setFilterByStatus(currentStatusParam)
   }, [searchParams])
 
-  // ============ LOADING STATE ============
+  // Loading State
   if (dashboardData.loading) {
     return (
       <Container fluid>
@@ -261,7 +259,7 @@ const EndUserDashboard = () => {
     )
   }
 
-  // ============ ERROR STATE ============
+  // Error State
   if (dashboardData.error) {
     return (
       <Container fluid>
@@ -280,7 +278,7 @@ const EndUserDashboard = () => {
     )
   }
 
-  // ============ ALL INCIDENTS VIEW ============
+  // All Incidents View
   if (showAllIncidents) {
     return (
       <AllIncidents
@@ -291,13 +289,20 @@ const EndUserDashboard = () => {
     )
   }
 
-  // ============ MAIN DASHBOARD VIEW ============
+  // Resolved Incidents View
+  if (showResolvedIncidents) {
+    return (
+      <ResolvedIncidents
+        userType="enduser"
+        onBack={handleBackToDashboard}
+        initialStatusFilter={filterByStatus}
+      />
+    )
+  }
+
+  // Main Dashboard View
   const stats = getIncidentStats(dashboardData.myIncidents)
   const { months, reported, resolved, inProgress } = getMonthlyTrends()
-
-  // Debug info for development
-  console.log('Dashboard render - incidents count:', dashboardData.myIncidents.length);
-  console.log('Dashboard render - stats:', stats);
 
   // Pie chart data
   const pieChartSeries = [stats.resolved, stats.inProgress, stats.pending, stats.closed]
@@ -334,10 +339,10 @@ const EndUserDashboard = () => {
                 statusToFilter = 'resolved'
                 break
               case 'In Progress':
-                statusToFilter = 'in_progress'
+                statusToFilter = 'inprogress'
                 break
               case 'Pending':
-                statusToFilter = 'pending'
+                statusToFilter = 'new'
                 break
               case 'Closed':
                 statusToFilter = 'closed'
@@ -350,7 +355,7 @@ const EndUserDashboard = () => {
               }, 0)
             }
           } catch (error) {
-            console.warn('Chart interaction error:', error)
+            // Silent error handling for chart interactions
           }
         }
       }
@@ -451,11 +456,16 @@ const EndUserDashboard = () => {
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <h5>My Recent Incidents</h5>
-                <div>
+                <div className="d-flex gap-2">
                   {stats.total > 0 && (
-                    <Button color="outline-primary" size="sm" onClick={handleViewAllIncidents}>
-                      View All
-                    </Button>
+                    <>
+                      <Button color="outline-primary" size="sm" onClick={handleViewAllIncidents}>
+                        View Active
+                      </Button>
+                      <Button color="outline-success" size="sm" onClick={handleViewResolvedIncidents}>
+                        View Resolved
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -506,7 +516,7 @@ const EndUserDashboard = () => {
                               className="badge"
                               style={{ backgroundColor: getStatusColor(getStatus(incident)), color: 'white' }}
                             >
-                              {getStatus(incident).replace('_', ' ')}
+                              {getStatus(incident)}
                             </span>
                           </td>
                           <td>

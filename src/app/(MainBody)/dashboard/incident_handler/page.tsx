@@ -82,11 +82,6 @@ const IncidentHandlerDashboard: React.FC = () => {
 
   // Helper functions
   const getStatus = useCallback((incident: Incident): string => {
-    // Handle different possible status formats from the backend
-    if (incident.incidentstate && typeof incident.incidentstate === 'string') {
-      return incident.incidentstate.toLowerCase().replace('_', ' ');
-    }
-
     if (incident.incidentstate && typeof incident.incidentstate === 'string') {
       return incident.incidentstate.toLowerCase().replace('_', ' ');
     }
@@ -100,28 +95,27 @@ const IncidentHandlerDashboard: React.FC = () => {
       return state;
     }
 
-    // Fallback - always return a string
     return 'pending';
   }, [])
 
   const getCategoryName = useCallback((incident: Incident): string => {
-    return incident.category?.name || 'Uncategorized'
+    return incident.category?.name || ''
   }, [])
 
   const getPriorityName = useCallback((incident: Incident): string => {
-    return incident.priority?.name || incident.urgency?.name || 'Medium'
+    return incident.priority?.name || incident.urgency?.name || ''
   }, [])
 
   const getCallerName = useCallback((incident: Incident): string => {
-    if (!incident.user) return 'Unknown User'
+    if (!incident.user) return ''
     const fullName = incident.user.last_name
       ? `${incident.user.name} ${incident.user.last_name}`
       : incident.user.name
-    return fullName || 'Unknown User'
+    return fullName || ''
   }, [])
 
   const getIncidentNumber = useCallback((incident: Incident): string => {
-    return incident.incident_no || incident.id?.toString() || 'Unknown'
+    return incident.incident_no || incident.id?.toString() || ''
   }, [])
 
   const getCreatedAt = useCallback((incident: Incident): string => {
@@ -137,22 +131,20 @@ const IncidentHandlerDashboard: React.FC = () => {
   }, [])
 
   const formatDateLocal = useCallback((dateString: string): string => {
+    if (!dateString) return ''
     try {
       return new Date(dateString).toLocaleDateString()
     } catch {
-      return 'Unknown'
+      return ''
     }
   }, [])
 
   // Data fetching
   const fetchData = useCallback(async (): Promise<void> => {
     try {
-      console.log('=== INCIDENT HANDLER DASHBOARD DEBUG START ===');
-
       setDashboardData(prev => ({ ...prev, loading: true, error: null }))
 
       if (!isAuthenticated()) {
-        console.log('User not authenticated, redirecting to login');
         router.replace('/auth/login')
         return
       }
@@ -178,9 +170,7 @@ const IncidentHandlerDashboard: React.FC = () => {
         error: null
       })
 
-      console.log('=== INCIDENT HANDLER DASHBOARD DEBUG END ===');
     } catch (error: any) {
-      console.error('Handler Dashboard fetch error:', error)
       setDashboardData(prev => ({
         ...prev,
         loading: false,
@@ -215,12 +205,12 @@ const IncidentHandlerDashboard: React.FC = () => {
     window.history.pushState({}, '', newUrl.toString())
   }, [])
 
-  const handleViewAssignIncidents = useCallback((): void => {
-    setCurrentView(VIEWS.ASSIGN_INCIDENTS)
-    const newUrl = new URL(window.location.href)
-    newUrl.searchParams.set('view', VIEWS.ASSIGN_INCIDENTS)
-    window.history.pushState({}, '', newUrl.toString())
-  }, [])
+  // const handleViewAssignIncidents = useCallback((): void => {
+  //   setCurrentView(VIEWS.ASSIGN_INCIDENTS)
+  //   const newUrl = new URL(window.location.href)
+  //   newUrl.searchParams.set('view', VIEWS.ASSIGN_INCIDENTS)
+  //   window.history.pushState({}, '', newUrl.toString())
+  // }, [])
 
   const handleBackToDashboard = useCallback((): void => {
     setCurrentView(VIEWS.DASHBOARD)
@@ -386,7 +376,7 @@ const IncidentHandlerDashboard: React.FC = () => {
               window.history.pushState({}, '', newUrl.toString())
             }
           } catch (error) {
-            console.warn('Chart interaction error:', error)
+            // Silent error handling
           }
         }
       }

@@ -10,11 +10,14 @@ import {
 } from "../services/userService";
 
 import IncidentCreationForm from "../../../Components/Forms/IncidentCreationForm";
+import AllIncidents from "../../../Components/AllIncidents";
+import ResolvedIncidents from "../../../Components/ResolvedIncidents";
 
 const DashboardContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab');
+  const view = searchParams.get('view');
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
 
@@ -37,8 +40,13 @@ const DashboardContent = () => {
       return;
     }
 
-    // For 'all-incidents' tab, redirect to appropriate dashboard
-    // The individual dashboards now handle their own "View All" functionality
+    // Handle view parameters for incidents
+    if (view === 'all-incidents' || view === 'resolved-incidents') {
+      setLoading(false);
+      return;
+    }
+
+    // For 'all-incidents' tab (legacy), redirect to appropriate dashboard
     if (activeTab === 'all-incidents') {
       const dashboardRoute = getUserDashboard(userTeam);
       router.replace(dashboardRoute);
@@ -53,7 +61,7 @@ const DashboardContent = () => {
     }
 
     setLoading(false);
-  }, [router, activeTab]);
+  }, [router, activeTab, view]);
 
   if (loading) {
     return (
@@ -100,6 +108,56 @@ const DashboardContent = () => {
     );
   }
 
+  // Show Active Incidents if view is all-incidents
+  if (view === 'all-incidents') {
+    const handleBackToDashboard = () => {
+      const dashboardRoute = getUserDashboard(user?.team || "user");
+      router.push(dashboardRoute);
+    };
+
+    // Determine user type based on team
+    let userType: 'enduser' | 'handler' | 'admin' | 'manager' | 'field_engineer' | 'expert_team' = 'enduser';
+    const teamName = user?.team_name?.toLowerCase() || '';
+
+    if (teamName.includes('admin')) userType = 'admin';
+    else if (teamName.includes('manager')) userType = 'manager';
+    else if (teamName.includes('handler')) userType = 'handler';
+    else if (teamName.includes('field') || teamName.includes('engineer')) userType = 'field_engineer';
+    else if (teamName.includes('expert')) userType = 'expert_team';
+
+    return (
+      <AllIncidents
+        userType={userType}
+        onBack={handleBackToDashboard}
+      />
+    );
+  }
+
+  // Show Resolved Incidents if view is resolved-incidents
+  if (view === 'resolved-incidents') {
+    const handleBackToDashboard = () => {
+      const dashboardRoute = getUserDashboard(user?.team || "user");
+      router.push(dashboardRoute);
+    };
+
+    // Determine user type based on team
+    let userType: 'enduser' | 'handler' | 'admin' | 'manager' | 'field_engineer' | 'expert_team' = 'enduser';
+    const teamName = user?.team_name?.toLowerCase() || '';
+
+    if (teamName.includes('admin')) userType = 'admin';
+    else if (teamName.includes('manager')) userType = 'manager';
+    else if (teamName.includes('handler')) userType = 'handler';
+    else if (teamName.includes('field') || teamName.includes('engineer')) userType = 'field_engineer';
+    else if (teamName.includes('expert')) userType = 'expert_team';
+
+    return (
+      <ResolvedIncidents
+        userType={userType}
+        onBack={handleBackToDashboard}
+      />
+    );
+  }
+
   // Default redirecting state
   return (
     <Container fluid className="p-0">
@@ -113,7 +171,7 @@ const DashboardContent = () => {
               <h5 className="mt-3 text-muted">Redirecting to your dashboard...</h5>
               {user && (
                 <p className="text-muted mt-2">
-                  User: {user.name} | Team: {user.team}
+                  User: {user.name} | Team: {user.team_name}
                 </p>
               )}
             </div>

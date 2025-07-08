@@ -1,9 +1,9 @@
-// Data/Layout/Menu.tsx - Complete Fixed Version with Field Engineer
+// Data/Layout/Menu.tsx - Fixed Menu with Correct Routes
 import { MenuItem } from "@/Types/Layout.type";
 import { useState, useEffect } from 'react';
 import { getStoredUserTeam, mapTeamToRole, isAuthenticated } from "../../app/(MainBody)/services/userService";
 
-// User role type definition - UPDATED to include Field Engineer
+// User role type definition
 export type UserRole = 'ADMINISTRATOR' | 'INCIDENT_MANAGER' | 'INCIDENT_HANDLER' | 'FIELD_ENGINEER' | 'EXPERT_TEAM' | 'USER' | 'SLA_MANAGER';
 
 export interface User {
@@ -65,7 +65,7 @@ export const useUserRole = () => {
   };
 };
 
-// Role utilities with comprehensive permission system - UPDATED
+// Role utilities with comprehensive permission system
 export const RoleUtils = {
   getDefaultDashboard: (role: UserRole): string => {
     const dashboardMap: Record<UserRole, string> = {
@@ -237,19 +237,11 @@ const IncidentManagerMenuList: MenuItem[] = [
     createMenuItem("Manager", "/dashboard/incident_manager")
   ]),
   createMenuSection("Incident Management", [
-    createMenuItem("All Incidents", "/dashboard/incident_manager?view=all-incidents"),
+    createMenuItem("Active Incidents", "/dashboard?view=all-incidents"),
+    createMenuItem("Resolved Incidents", "/dashboard?view=resolved-incidents"),
     createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
-    createMenuItem("Assign Incidents", "/dashboard/incident_manager?view=assign-incidents"),
-    createMenuItem("Pending EA approvals", "/dashboard?tab=pending-approval")
-  ]),
-  // createMenuSection("Requests", [
-  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  // ]),
-  // createMenuSection("SLA Management", [
-  //   createMenuItem("Activate SLA", "/dashboard?tab=sla-define"),
-  //   createMenuItem("SLA Reports", "/dashboard?tab=sla-report")
-  // ])
+    createMenuItem("Assign Incidents", "/dashboard/incident_manager?view=assign-incidents")
+  ])
 ];
 
 const IncidentHandlerMenuList: MenuItem[] = [
@@ -257,37 +249,31 @@ const IncidentHandlerMenuList: MenuItem[] = [
     createMenuItem("Handler", "/dashboard/incident_handler", "dashboard")
   ]),
   createMenuSection("My Tasks", [
-    createMenuItem("My Incidents", "/dashboard/incident_handler?view=all-incidents", "list"),
+    createMenuItem("Active Incidents", "/dashboard?view=all-incidents", "list"),
+    createMenuItem("Resolved Incidents", "/dashboard?view=resolved-incidents", "check-circle"),
     createMenuItem("Create Incident", "/dashboard?tab=create-incident", "plus-circle"),
     createMenuItem("Assign to Others", "/dashboard/incident_handler?view=assign-incidents", "user-check")
-  ]),
-  // createMenuSection("Requests", [
-  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  // ])
-];
-
-//Field Engineer Menu
-const FieldEngineerMenuList: MenuItem[] = [
-  createMenuSection("Dashboard", [
-    createMenuItem("Field Engineer", "/dashboard/field_engineer"),
   ])
 ];
 
-//Expert Menu
+// Field Engineer Menu - Simplified without separate incident views
+const FieldEngineerMenuList: MenuItem[] = [
+  createMenuSection("Dashboard", [
+    createMenuItem("Field Engineer", "/dashboard/field_engineer")
+  ])
+];
+
+// Expert Menu
 const ExpertTeamMenuList: MenuItem[] = [
   createMenuSection("Dashboard", [
     createMenuItem("Expert Team", "/dashboard/expert_team")
   ]),
   createMenuSection("My Tasks", [
-    createMenuItem("My Incidents", "/dashboard/expert_team?view=all-incidents"),
+    createMenuItem("Active Incidents", "/dashboard?view=all-incidents"),
+    createMenuItem("Resolved Incidents", "/dashboard?view=resolved-incidents"),
     createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
     createMenuItem("Assign to Others", "/dashboard/expert_team?view=assign-incidents")
-  ]),
-  // createMenuSection("Requests", [
-  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  // ])
+  ])
 ];
 
 const SLAManagerMenuList: MenuItem[] = [
@@ -299,11 +285,7 @@ const SLAManagerMenuList: MenuItem[] = [
     createMenuItem("SLA Conditions", "/dashboard/slamanager/sla-conditions"),
     createMenuItem("SLA Groups", "/dashboard/slamanager/sla-groups"),
     createMenuItem("SLA Notifications", "/dashboard/slamanager/sla-notifications")
-  ]),
-  // createMenuSection("Requests", [
-  //   createMenuItem("Submit Request", "/dashboard/incident_manager?view=request-form"),
-  //   createMenuItem("My Requests", "/dashboard/incident_manager?view=request-status")
-  // ])
+  ])
 ];
 
 const EndUserMenuList: MenuItem[] = [
@@ -312,7 +294,8 @@ const EndUserMenuList: MenuItem[] = [
   ]),
   createMenuSection("Incidents", [
     createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
-    createMenuItem("All Incidents", "/dashboard/enduser?view=all-incidents")
+    createMenuItem("Active Incidents", "/dashboard?view=all-incidents"),
+    createMenuItem("Resolved Incidents", "/dashboard?view=resolved-incidents")
   ]),
   createMenuSection("Support", [
     createMenuItem("Help Center", "/dashboard?view=help"),
@@ -327,7 +310,7 @@ const GuestMenuList: MenuItem[] = [
   ])
 ];
 
-// Main functions - UPDATED to include new roles
+// Main functions
 export const getMenuByRole = (userRole: UserRole): MenuItem[] => {
   const menuMap: Record<UserRole, MenuItem[]> = {
     'ADMINISTRATOR': AdminMenuList,
@@ -406,7 +389,7 @@ export const filterMenuByPermissions = (menu: MenuItem[], userRole: UserRole): M
   }));
 };
 
-// Export individual menus for backward compatibility - UPDATED
+// Export individual menus for backward compatibility
 export {
   AdminMenuList,
   IncidentManagerMenuList,

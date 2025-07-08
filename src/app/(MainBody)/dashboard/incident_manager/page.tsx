@@ -94,14 +94,14 @@ const IncidentManagerDashboard: React.FC = () => {
 
   // Helper functions
   const getIncidentNumber = useCallback((incident: Incident): string => {
-    return incident.incident_no || incident.id?.toString() || 'Unknown'
+    return incident.incident_no || incident.id?.toString() || ''
   }, [])
 
   const getCategoryName = useCallback((incident: Incident): string => {
     if (incident.category && typeof incident.category === 'object' && incident.category.name) {
       return incident.category.name
     }
-    return 'Uncategorized'
+    return ''
   }, [])
 
   const getPriorityName = useCallback((incident: Incident): string => {
@@ -111,7 +111,7 @@ const IncidentManagerDashboard: React.FC = () => {
     if (incident.urgency && typeof incident.urgency === 'object' && incident.urgency.name) {
       return incident.urgency.name
     }
-    return 'Medium'
+    return ''
   }, [])
 
   const getStatusName = useCallback((incident: Incident): 'pending' | 'in_progress' | 'resolved' | 'closed' => {
@@ -143,35 +143,32 @@ const IncidentManagerDashboard: React.FC = () => {
   }, [])
 
   const getCallerName = useCallback((incident: Incident): string => {
-    if (!incident.user) return 'Unknown User'
+    if (!incident.user) return ''
     const firstName = incident.user.name || ''
     const lastName = incident.user.last_name || ''
-    return firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'Unknown User'
+    return firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || ''
   }, [])
 
   const formatDateLocal = useCallback((dateString: string): string => {
+    if (!dateString) return ''
     try {
       return new Date(dateString).toLocaleDateString()
     } catch {
-      return 'Unknown'
+      return ''
     }
   }, [])
 
   // Data fetching functions
   const fetchData = useCallback(async (): Promise<void> => {
     try {
-      console.log('=== INCIDENT MANAGER DASHBOARD DEBUG START ===');
-
       setDashboardData(prev => ({ ...prev, loading: true, error: null }))
 
       if (!isAuthenticated()) {
-        console.log('User not authenticated, redirecting to login');
         router.replace('/auth/login')
         return
       }
 
       const currentUser = getCurrentUser()
-      console.log('getCurrentUser() result:', currentUser);
 
       if (!currentUser.id) {
         throw new Error('User ID not found. Please log in again.')
@@ -184,9 +181,7 @@ const IncidentManagerDashboard: React.FC = () => {
         userId: currentUser.id.toString()
       })
 
-      console.log('About to fetch manager incidents...');
       const managerIncidents = await fetchManagerIncidents()
-      console.log('Fetched manager incidents:', managerIncidents);
 
       setDashboardData({
         managedIncidents: managerIncidents,
@@ -194,9 +189,7 @@ const IncidentManagerDashboard: React.FC = () => {
         error: null
       })
 
-      console.log('=== INCIDENT MANAGER DASHBOARD DEBUG END ===');
     } catch (error: any) {
-      console.error('Manager Dashboard fetch error:', error)
       setDashboardData(prev => ({
         ...prev,
         loading: false,
@@ -245,7 +238,7 @@ const IncidentManagerDashboard: React.FC = () => {
       }))
       .filter(h => h.total > 0)
       .sort((a, b) => b.total - a.total)
-      .slice(0, 10) // Limit to top 10 handlers
+      .slice(0, 10)
 
     return {
       handlers: sortedHandlers.map(h => h.name),
