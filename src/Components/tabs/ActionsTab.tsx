@@ -44,7 +44,8 @@ const ActionsTab: React.FC<ActionsTabProps> = ({
     { id: 4, name: 'Documentation', description: 'Document findings and procedures' },
     { id: 5, name: 'Follow Up', description: 'Follow-up actions and verification' },
     { id: 6, name: 'Communication', description: 'Stakeholder communication' },
-    { id: 7, name: 'Testing', description: 'System or equipment testing' }
+    { id: 7, name: 'Testing', description: 'System or equipment testing' },
+    { id: 8, name: 'Others', description: 'Not listed' }
   ]
 
   const actionStatuses = [
@@ -771,7 +772,7 @@ const ActionsTab: React.FC<ActionsTabProps> = ({
                             )}
                           </small>
                         </td>
-                        {canEdit() && (
+                        {/* {canEdit() && (
                           <td>
                             <Button
                               color="success"
@@ -782,7 +783,7 @@ const ActionsTab: React.FC<ActionsTabProps> = ({
                               Edit
                             </Button>
                           </td>
-                        )}
+                        )} */}
                       </tr>
                     )
                   })}

@@ -272,8 +272,10 @@ const ExpertTeamMenuList: MenuItem[] = [
     createMenuItem("Active Incidents", "/dashboard?view=all-incidents"),
     createMenuItem("Resolved Incidents", "/dashboard?view=resolved-incidents"),
     createMenuItem("Create Incident", "/dashboard?tab=create-incident"),
-    createMenuItem("Assign to Others", "/dashboard/expert_team?view=assign-incidents")
+    createMenuItem("Assign to Others", "/dashboard/expert_team?view=assign-incidents"),
+    createMenuItem("Pending Approvals", "/dashboard/expert_team?view=assign-incidents")
   ])
+  
 ];
 
 const SLAManagerMenuList: MenuItem[] = [

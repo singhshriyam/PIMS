@@ -695,6 +695,28 @@ const DetailsTab: React.FC<DetailsTabProps> = ({
               </div>
             </div>
           )}
+          {/* Hardcoded SLA Info */}
+          <div className="mt-5 p-3 border rounded bg-light text-dark">
+            <h6 className="mb-3 text-success">SLA Information</h6>
+            <Row className="mb-2">
+              <Col md={3}><strong>SLA Name:</strong> Basic Response SLA</Col>
+              <Col md={3}><strong>Type:</strong> Response</Col>
+              <Col md={3}><strong>Target:</strong> 4 hours</Col>
+              <Col md={3}><strong>Stage:</strong> Active</Col>
+            </Row>
+            <Row className="mb-2">
+              <Col md={3}><strong>Business Time Left:</strong> 2h 15m</Col>
+              <Col md={3}><strong>Business Time Elapsed:</strong> 1h 45m</Col>
+              <Col md={3}><strong>Start Time:</strong> 2025-07-08 10:30</Col>
+              <Col md={3}>
+                <strong>Progress:</strong>
+                <div className="progress mt-1" style={{ height: '8px' }}>
+                  <div className="progress-bar bg-success" role="progressbar" style={{ width: '44%' }}></div>
+                </div>
+                <small>44% elapsed</small>
+              </Col>
+            </Row>
+          </div>
         </>
       )}
     </div>

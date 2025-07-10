@@ -18,21 +18,19 @@ import {
   type User
 } from '../../services/userService'
 
-import {
-  fetchExpertTeamIncidents,
-  getIncidentStats,
-  getStatusColor,
-  getPriorityColor,
-  type Incident
-} from '../../services/incidentService'
-
 // Dynamic imports
 const Chart = dynamic(() => import('react-apexcharts'), {
   ssr: false,
   loading: () => <Spinner color="primary" />
 })
 
-// Types
+import {
+  fetchExpertTeamIncidents,
+  getStatusColor,
+  getPriorityColor,
+  type Incident
+} from '../../services/incidentService'
+
 interface DashboardState {
   myIncidents: Incident[]
   loading: boolean
@@ -48,7 +46,6 @@ interface UserState {
 
 type ViewType = 'dashboard' | 'request-form' | 'my-requests' | 'all-incidents' | 'assign-incidents'
 
-// Constants
 const VIEWS = {
   DASHBOARD: 'dashboard' as const,
   REQUEST_FORM: 'request-form' as const,
@@ -61,7 +58,6 @@ const ExpertTeamDashboard: React.FC = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // State
   const [currentView, setCurrentView] = useState<ViewType>(
     (searchParams.get('view') as ViewType) || VIEWS.DASHBOARD
   )
@@ -80,26 +76,23 @@ const ExpertTeamDashboard: React.FC = () => {
     userId: ''
   })
 
-  // Helper functions
   const getStatus = useCallback((incident: Incident): string => {
-    if (incident.incidentstate && typeof incident.incidentstate === 'string') {
-      return incident.incidentstate.toLowerCase().replace('_', ' ');
+    if (incident.incidentstate?.name) {
+      const state = incident.incidentstate.name.toLowerCase()
+      switch(state) {
+        case 'new': return 'pending'
+        case 'in progress': return 'in_progress'
+        case 'inprogress': return 'in_progress'
+        case 'resolved': return 'resolved'
+        case 'closed': return 'closed'
+        default: return state.replace(' ', '_')
+      }
     }
-
-    if (incident.incidentstate && typeof incident.incidentstate === 'object' && incident.incidentstate.name) {
-      const state = incident.incidentstate.name.toLowerCase();
-      if (state === 'new') return 'pending';
-      if (state === 'inprogress') return 'in_progress';
-      if (state === 'resolved') return 'resolved';
-      if (state === 'closed') return 'closed';
-      return state;
-    }
-
-    return 'pending';
+    return 'pending'
   }, [])
 
   const getCategoryName = useCallback((incident: Incident): string => {
-    return incident.category?.name || 'Uncategorized'
+    return incident.category?.name || incident.category_name || 'Uncategorized'
   }, [])
 
   const getPriorityName = useCallback((incident: Incident): string => {
@@ -107,11 +100,13 @@ const ExpertTeamDashboard: React.FC = () => {
   }, [])
 
   const getCallerName = useCallback((incident: Incident): string => {
-    if (!incident.user) return 'Unknown User'
-    const fullName = incident.user.last_name
-      ? `${incident.user.name} ${incident.user.last_name}`
-      : incident.user.name
-    return fullName || 'Unknown User'
+    if (incident.user?.name) {
+      const fullName = incident.user.last_name
+        ? `${incident.user.name} ${incident.user.last_name}`
+        : incident.user.name
+      return fullName
+    }
+    return incident.reported_by || 'Unknown User'
   }, [])
 
   const getIncidentNumber = useCallback((incident: Incident): string => {
@@ -122,14 +117,6 @@ const ExpertTeamDashboard: React.FC = () => {
     return incident.created_at || new Date().toISOString()
   }, [])
 
-  const getAssignedTo = useCallback((incident: Incident): string => {
-    if (!incident.assigned_to) return 'Unassigned'
-    const fullName = incident.assigned_to.last_name
-      ? `${incident.assigned_to.name} ${incident.assigned_to.last_name}`
-      : incident.assigned_to.name
-    return fullName || 'Unassigned'
-  }, [])
-
   const formatDateLocal = useCallback((dateString: string): string => {
     try {
       return new Date(dateString).toLocaleDateString()
@@ -138,7 +125,36 @@ const ExpertTeamDashboard: React.FC = () => {
     }
   }, [])
 
-  // Data fetching
+  const getIncidentStatsLocal = useCallback((incidents: Incident[]) => {
+    const stats = {
+      total: incidents.length,
+      pending: 0,
+      inProgress: 0,
+      resolved: 0,
+      closed: 0
+    }
+
+    incidents.forEach(incident => {
+      const status = getStatus(incident)
+      switch(status) {
+        case 'pending':
+          stats.pending++
+          break
+        case 'in_progress':
+          stats.inProgress++
+          break
+        case 'resolved':
+          stats.resolved++
+          break
+        case 'closed':
+          stats.closed++
+          break
+      }
+    })
+
+    return stats
+  }, [getStatus])
+
   const fetchData = useCallback(async (): Promise<void> => {
     try {
       setDashboardData(prev => ({ ...prev, loading: true, error: null }))
@@ -170,12 +186,16 @@ const ExpertTeamDashboard: React.FC = () => {
       })
 
     } catch (error: any) {
-      console.error('Expert Team Dashboard fetch error:', error)
       setDashboardData(prev => ({
         ...prev,
         loading: false,
         error: error.message || 'Failed to load dashboard data'
       }))
+
+      if (error.message?.includes('Authentication') || error.message?.includes('token')) {
+        clearUserData()
+        router.replace('/auth/login')
+      }
     }
   }, [router])
 
@@ -197,7 +217,6 @@ const ExpertTeamDashboard: React.FC = () => {
     }
   }, [])
 
-  // Navigation handlers
   const handleViewAllIncidents = useCallback((): void => {
     setCurrentView(VIEWS.ALL_INCIDENTS)
     const newUrl = new URL(window.location.href)
@@ -226,9 +245,8 @@ const ExpertTeamDashboard: React.FC = () => {
     router.replace('/auth/login')
   }, [router])
 
-  // Chart data calculations
   const getMonthlyTrends = useCallback(() => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
     const monthlyData = months.map((month, index) => {
       const monthIncidents = dashboardData.myIncidents.filter(incident => {
@@ -255,7 +273,6 @@ const ExpertTeamDashboard: React.FC = () => {
     }
   }, [dashboardData.myIncidents, getCreatedAt, getStatus])
 
-  // Effects
   useEffect(() => {
     fetchData()
   }, [fetchData])
@@ -267,7 +284,6 @@ const ExpertTeamDashboard: React.FC = () => {
     setFilterByStatus(currentStatusParam)
   }, [searchParams])
 
-  // View routing
   if (currentView === VIEWS.REQUEST_FORM) {
     return <RequestForm userType="expert_team" onBack={handleBackToDashboard} initialView="form" />
   }
@@ -290,7 +306,6 @@ const ExpertTeamDashboard: React.FC = () => {
     return <AssignIncidents userType="expert_team" onBack={handleBackToDashboard} />
   }
 
-  // Loading state
   if (dashboardData.loading) {
     return (
       <Container fluid>
@@ -302,30 +317,9 @@ const ExpertTeamDashboard: React.FC = () => {
     )
   }
 
-  // Error state
-  if (dashboardData.error) {
-    return (
-      <Container fluid>
-        <div className="alert alert-danger mt-3">
-          <strong>Error:</strong> {dashboardData.error}
-          <div className="mt-2">
-            <Button color="primary" onClick={handleRefreshData} className="me-2">
-              Try again
-            </Button>
-            <Button color="secondary" onClick={handleLogout}>
-              Logout & Login Again
-            </Button>
-          </div>
-        </div>
-      </Container>
-    )
-  }
-
-  // Get statistics and chart data
-  const stats = getIncidentStats(dashboardData.myIncidents)
+  const stats = getIncidentStatsLocal(dashboardData.myIncidents)
   const { months, assigned, completed, inProgress } = getMonthlyTrends()
 
-  // Chart configurations
   const pieChartSeries = [stats.resolved, stats.inProgress, stats.pending, stats.closed]
 
   const nonZeroData: number[] = []
@@ -376,7 +370,7 @@ const ExpertTeamDashboard: React.FC = () => {
               window.history.pushState({}, '', newUrl.toString())
             }
           } catch (error) {
-            console.warn('Chart interaction error:', error)
+            // Silently handle chart interaction errors
           }
         }
       }
@@ -422,7 +416,6 @@ const ExpertTeamDashboard: React.FC = () => {
 
   return (
     <Container fluid>
-      {/* Welcome Header */}
       <Row>
         <Col xs={12}>
           <Card className="mb-4 mt-4">
@@ -437,7 +430,6 @@ const ExpertTeamDashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Statistics Cards */}
       <Row>
         {[
           { value: stats.total, label: 'Expert Cases', color: 'primary'},
@@ -462,7 +454,6 @@ const ExpertTeamDashboard: React.FC = () => {
         ))}
       </Row>
 
-      {/* Main Content */}
       <Row>
         <Col lg={8}>
           <Card>
@@ -487,14 +478,15 @@ const ExpertTeamDashboard: React.FC = () => {
                     </svg>
                   </div>
                   <h6 className="text-muted">No expert cases assigned yet</h6>
+                  <p className="text-muted small">Expert cases will appear here when assigned to you</p>
                 </div>
               ) : (
                 <div className="table-responsive">
                   <table className="table table-bordernone">
                     <thead>
                       <tr>
-                        <th scope="col">Case ID</th>
-                        <th scope="col">Expertise Area</th>
+                        <th scope="col">Incident ID</th>
+                        <th scope="col">Category</th>
                         <th scope="col">Priority</th>
                         <th scope="col">Status</th>
                         <th scope="col">Assigned</th>
@@ -503,7 +495,7 @@ const ExpertTeamDashboard: React.FC = () => {
                     <tbody>
                       {dashboardData.myIncidents
                         .sort((a, b) => new Date(getCreatedAt(b)).getTime() - new Date(getCreatedAt(a)).getTime())
-                        .slice(0, 5)
+                        .slice(0, 3)
                         .map((incident) => (
                         <tr key={incident.id}>
                           <td>
@@ -512,7 +504,6 @@ const ExpertTeamDashboard: React.FC = () => {
                           <td>
                             <div>
                               <div className="fw-medium">{getCategoryName(incident)}</div>
-                              <small className="text-muted">Reported by: {getCallerName(incident)}</small>
                             </div>
                           </td>
                           <td>
@@ -584,7 +575,6 @@ const ExpertTeamDashboard: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Monthly Expert Performance */}
       <Row>
         <Col lg={12}>
           <Card>
@@ -612,6 +602,7 @@ const ExpertTeamDashboard: React.FC = () => {
                   }}
                 >
                   <p className="text-muted">No performance data available yet</p>
+                  <small className="text-muted">Monthly trends will appear here when you have assigned cases</small>
                 </div>
               )}
             </CardBody>

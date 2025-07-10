@@ -81,8 +81,6 @@ const makeApiCall = async (endpoint: string, method: string = 'GET', body?: any)
     config.body = JSON.stringify(body);
   }
 
-  console.log(`Making API call to ${endpoint} with body:`, body);
-
   const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
   if (!response.ok) {
@@ -92,7 +90,6 @@ const makeApiCall = async (endpoint: string, method: string = 'GET', body?: any)
   }
 
   const result = await response.json();
-  console.log(`API response from ${endpoint}:`, result);
 
   if (!result.success) {
     throw new Error(result.message || 'API call failed');
@@ -104,22 +101,17 @@ const makeApiCall = async (endpoint: string, method: string = 'GET', body?: any)
 // Incident fetching functions
 export const fetchHandlerIncidents = async (): Promise<Incident[]> => {
   const userId = getUserId();
-  console.log('fetchHandlerIncidents - Using userId:', userId);
   return makeApiCall('/incident-handler/incident-list', 'POST', { assigned_to_id: parseInt(userId) });
 };
 
 export const fetchManagerIncidents = async (): Promise<Incident[]> => {
   const userId = getUserId();
-  console.log('fetchManagerIncidents - Using userId:', userId);
   return makeApiCall('/incident-manager/incident-list', 'POST', { manager_id: parseInt(userId) });
 };
 
 export const fetchEndUserIncidents = async (): Promise<Incident[]> => {
   const userId = getUserId();
   const token = getStoredToken();
-
-  console.log('fetchEndUserIncidents - Using userId:', userId);
-  console.log('fetchEndUserIncidents - Token exists:', !!token);
 
   if (!token) {
     throw new Error('Authentication token not found');
@@ -140,7 +132,6 @@ export const fetchEndUserIncidents = async (): Promise<Incident[]> => {
       body: JSON.stringify({ user_id: parseInt(userId) })
     });
 
-    console.log('fetchEndUserIncidents - Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -149,7 +140,6 @@ export const fetchEndUserIncidents = async (): Promise<Incident[]> => {
     }
 
     const result = await response.json();
-    console.log('fetchEndUserIncidents - API result:', result);
 
     if (!result.success) {
       throw new Error(result.message || 'Failed to fetch end user incidents');
@@ -157,7 +147,6 @@ export const fetchEndUserIncidents = async (): Promise<Incident[]> => {
 
     return result.data || [];
   } catch (error) {
-    console.error('fetchEndUserIncidents - Error:', error);
     throw error;
   }
 };
@@ -166,7 +155,6 @@ export const fetchFieldEngineerIncidents = async (): Promise<Incident[]> => {
   const userId = getUserId();
   const token = getStoredToken();
 
-  console.log('fetchFieldEngineerIncidents - Using userId:', userId);
 
   const response = await fetch(`${API_BASE_URL}/all-incidents`, {
     method: 'GET',
@@ -189,8 +177,88 @@ export const fetchFieldEngineerIncidents = async (): Promise<Incident[]> => {
   return result.data.filter((incident: any) => incident.assigned_to_id === currentUserId);
 };
 
+// Update this function in your incidentService.ts file
+
+// Replace the fetchExpertTeamIncidents function in your incidentService.ts with this:
+
 export const fetchExpertTeamIncidents = async (): Promise<Incident[]> => {
-  return fetchFieldEngineerIncidents(); // Same logic
+  const userId = getUserId();
+  const token = getStoredToken();
+
+  console.log('fetchExpertTeamIncidents - Using userId:', userId);
+
+  const response = await fetch(`${API_BASE_URL}/all-incidents`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  const result = await response.json();
+  if (!result.success) {
+    throw new Error('Expert Team API failed');
+  }
+
+  if (!userId) {
+    return [];
+  }
+
+  const currentUserId = parseInt(userId);
+
+  const mappedAndFilteredIncidents: Incident[] = result.data
+    .filter((apiIncident: any) => apiIncident.assigned_to_id === currentUserId)
+    .map((apiIncident: any): Incident => ({
+      id: apiIncident.id,
+      user_id: apiIncident.user_id,
+      user: {
+        name: apiIncident.name_name || 'Unknown',
+        last_name: null, // API doesn't provide this separately
+      },
+      site_id: apiIncident.site_id,
+      site: apiIncident.site_name ? { name: apiIncident.site_name } : null,
+      asset_id: apiIncident.asset_id,
+      asset: apiIncident.asset_name ? { name: apiIncident.asset_name } : null,
+      category_id: apiIncident.category_id,
+      category_name: apiIncident.category_name,
+      category: apiIncident.category_name ? { name: apiIncident.category_name } : null,
+      subcategory_id: apiIncident.subcategory_id,
+      subcategory: apiIncident.subcategory_name ? { name: apiIncident.subcategory_name } : null,
+      contact_type_id: apiIncident.contact_type_id,
+      contact_type: apiIncident.contact_type_name ? { name: apiIncident.contact_type_name } : null,
+      impact_id: apiIncident.impact_id,
+      impact: apiIncident.impact_name ? { name: apiIncident.impact_name } : null,
+      priority_id: apiIncident.priority_id,
+      priority: apiIncident.priority_name ? { name: apiIncident.priority_name } : null,
+      urgency_id: apiIncident.urgency_id,
+      urgency: apiIncident.urgency_name ? { name: apiIncident.urgency_name } : null,
+      assigned_to_id: apiIncident.assigned_to_id,
+      assigned_to: apiIncident.assigned_to_name ? {
+        name: apiIncident.assigned_to_name,
+        last_name: null
+      } : null,
+      incidentstate_id: apiIncident.incidentstate_id,
+      incidentstate: apiIncident.incidentstate_name ? { name: apiIncident.incidentstate_name } : null,
+      incident_no: apiIncident.incident_no,
+      opened_at: apiIncident.opened_at,
+      closed_at: apiIncident.closed_at,
+      short_description: apiIncident.short_description,
+      description: apiIncident.description,
+      reported_by: apiIncident.name_name,
+      address: apiIncident.address,
+      lat: apiIncident.lat ? parseFloat(apiIncident.lat) : null,
+      lng: apiIncident.lng ? parseFloat(apiIncident.lng) : null,
+      narration: apiIncident.narration,
+      root_cause_analysis: apiIncident.root_cause_analysis,
+      conclusion: apiIncident.conclusion,
+      created_by_id: apiIncident.created_by_id,
+      updated_by_id: apiIncident.updated_by_id,
+      created_at: apiIncident.created_at,
+      updated_at: apiIncident.updated_at,
+      deleted_at: apiIncident.deleted_at
+    }));
+
+  return mappedAndFilteredIncidents;
 };
 
 export const fetchAdminIncidents = async (): Promise<Incident[]> => {

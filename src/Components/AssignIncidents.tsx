@@ -132,7 +132,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
     }
   }
 
-  // Check if user can assign incident
+  // Check if user can assign incident - Updated logic for expert team
   const canAssignIncident = (incident: ExtendedIncident): boolean => {
     if (!user || activeTab !== 'active') return false
 
@@ -141,8 +141,13 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
     // Admin and Manager can assign any incident
     if (userTeam.includes('admin') || userTeam.includes('manager')) return true
 
-    // Others can only assign incidents assigned to them
-    if (userTeam.includes('handler') || userTeam.includes('field') || userTeam.includes('expert')) {
+    // Expert team can assign incidents assigned to them or unassigned incidents
+    if (userTeam.includes('expert')) {
+      return incident.assigned_to?.id === parseInt(user.id) || !incident.assigned_to_id
+    }
+
+    // Handlers and Field Engineers can assign incidents assigned to them
+    if (userTeam.includes('handler') || userTeam.includes('field')) {
       return incident.assigned_to?.id === parseInt(user.id)
     }
 
@@ -200,7 +205,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
     }))
   }
 
-  // Fetch assignment targets
+  // Fetch assignment targets - Updated for expert team
   const fetchAssignmentTargets = async (): Promise<void> => {
     const token = getStoredToken()
     if (!token) {
@@ -230,15 +235,16 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       const userTeam = user?.team_name?.toLowerCase() || ''
       let assignableRoles: string[] = []
 
-      // Define who can assign to whom
+      // Define who can assign to whom - Updated for expert team
       if (userTeam.includes('admin') || userTeam.includes('manager')) {
+        assignableRoles = ['handler', 'field', 'engineer', 'expert']
+      } else if (userTeam.includes('expert')) {
+        // Expert team can assign to handlers, field engineers, and other experts
         assignableRoles = ['handler', 'field', 'engineer', 'expert']
       } else if (userTeam.includes('handler')) {
         assignableRoles = ['handler', 'field', 'engineer', 'expert']
       } else if (userTeam.includes('field') || userTeam.includes('engineer')) {
         assignableRoles = ['handler', 'expert']
-      } else if (userTeam.includes('expert')) {
-        assignableRoles = ['handler', 'field', 'engineer']
       }
 
       const targets = users
@@ -272,35 +278,6 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       setAvailableTeams([])
     } finally {
       setLoadingTargets(false)
-    }
-  }
-
-  // Get assignment data
-  const getAssignmentData = async (incidentId: string): Promise<any> => {
-    const token = getStoredToken()
-    if (!token) return null
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/incident-handler/incident-assignment/${incidentId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: new URLSearchParams()
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success && result.data && Array.isArray(result.data) && result.data.length > 0) {
-          const sortedAssignments = result.data.sort((a: any, b: any) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )
-          return { success: true, data: sortedAssignments[0] }
-        }
-      }
-      return null
-    } catch (error) {
-      return null
     }
   }
 
@@ -341,39 +318,27 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )
 
-      // Fetch incidents for "Assigned to Others" tab
+      // Fetch incidents for "Assigned to Others" tab - only for non-expert users
       let assignedToOthersIncidentsList: ExtendedIncident[] = []
 
-      if (userTeam.includes('handler') || userTeam.includes('field') || userTeam.includes('expert')) {
+      if (userTeam.includes('handler') || userTeam.includes('field')) {
         try {
           const allIncidentsList = await fetchAllIncidents()
-          // Filter for incidents assigned by current user to someone else
           assignedToOthersIncidentsList = allIncidentsList.filter(incident => {
-            // This would need proper assignment data fetching logic
-            // For now, just include incidents that are assigned to others
             return incident.assigned_to && incident.assigned_to.id !== currentUser.id
           }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         } catch (error) {
-          console.error('Error fetching assigned to others incidents:', error)
           assignedToOthersIncidentsList = []
         }
       }
 
       // Set state based on user type
-      if (userTeam.includes('admin') || userTeam.includes('manager')) {
-        setMyActiveIncidents(sortedActiveIncidents)
-        setAssignedToOthersIncidents([])
-        setIncidents(sortedActiveIncidents)
-        setFilteredIncidents(sortedActiveIncidents)
-      } else {
-        setMyActiveIncidents(sortedActiveIncidents)
-        setAssignedToOthersIncidents(assignedToOthersIncidentsList)
-        setIncidents([...sortedActiveIncidents, ...assignedToOthersIncidentsList])
-        setFilteredIncidents(activeTab === 'active' ? sortedActiveIncidents : assignedToOthersIncidentsList)
-      }
+      setMyActiveIncidents(sortedActiveIncidents)
+      setAssignedToOthersIncidents(assignedToOthersIncidentsList)
+      setIncidents([...sortedActiveIncidents, ...assignedToOthersIncidentsList])
+      setFilteredIncidents(activeTab === 'active' ? sortedActiveIncidents : assignedToOthersIncidentsList)
 
     } catch (error) {
-      console.error('fetchData error:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to load incidents'
       setError(errorMessage)
       setIncidents([])
@@ -460,7 +425,6 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
       setTimeout(() => setSuccess(null), 5000)
 
     } catch (error) {
-      console.error('Assignment error:', error)
       const errorMessage = error instanceof Error ? error.message : 'Assignment failed'
       setError(errorMessage)
     } finally {
@@ -554,9 +518,10 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
 
   const canAssign = !assigning && !loadingTargets && selectedAssignee && assignmentTargets.find(t => t.id === selectedAssignee)
 
-  const showTabs = user?.team_name?.toLowerCase().includes('handler') ||
-                   user?.team_name?.toLowerCase().includes('field') ||
-                   user?.team_name?.toLowerCase().includes('expert')
+  // Show tabs only for handlers and field engineers (NOT for expert team)
+  const showTabs = (user?.team_name?.toLowerCase().includes('handler') ||
+                   user?.team_name?.toLowerCase().includes('field')) &&
+                   !user?.team_name?.toLowerCase().includes('expert')
 
   if (loading) {
     return (
@@ -581,6 +546,12 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                 <div className="d-flex justify-content-between align-items-center">
                   <div>
                     <h4 className="mb-1">Incident Assignment</h4>
+                    <p className="text-muted mb-0">
+                      {user?.team_name?.toLowerCase().includes('expert')
+                        ? 'Assign your expert cases to appropriate team members'
+                        : 'Manage and assign incidents'
+                      }
+                    </p>
                   </div>
                   <div className="d-flex gap-2">
                     <Button color="secondary" size="sm" onClick={handleBackToDashboard}>
@@ -614,7 +585,7 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
           </Row>
         )}
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation - Only show for handlers and field engineers */}
         {showTabs && (
           <Row>
             <Col xs={12}>
@@ -655,16 +626,24 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
               <CardHeader>
                 <div className="d-flex justify-content-between align-items-center">
                   <h5 className="mb-0">
-                    {showTabs ? (activeTab === 'active' ? 'My Active Tasks' : 'Assigned to Others') : 'Incidents'}
+                    {showTabs ? (activeTab === 'active' ? 'My Active Tasks' : 'Assigned to Others') : 'My Expert Cases'}
                     ({filteredIncidents.length})
                   </h5>
+                  <Button color="outline-primary" size="sm" onClick={handleRefresh}>
+                    Refresh
+                  </Button>
                 </div>
               </CardHeader>
               <CardBody>
                 {filteredIncidents.length === 0 ? (
                   <div className="text-center py-5">
                     <p className="text-muted">
-                      {activeTab === 'active' ? 'No active incidents assigned to you' : 'No incidents assigned to others'}
+                      {user?.team_name?.toLowerCase().includes('expert')
+                        ? 'No expert cases assigned to you'
+                        : activeTab === 'active'
+                          ? 'No active incidents assigned to you'
+                          : 'No incidents assigned to others'
+                      }
                     </p>
                     <Button color="primary" onClick={handleRefresh}>Refresh</Button>
                   </div>
@@ -731,30 +710,32 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
                                   <small>{formatDate(incident.created_at)}</small>
                                 </td>
                                 <td>
-                                  {canAssign && !isReadOnly ? (
-                                    <Button
-                                      color="primary"
-                                      size="sm"
-                                      onClick={() => handleAssignIncident(incident)}
-                                      disabled={loadingTargets}
-                                    >
-                                      {loadingTargets ? (
-                                        <div className="spinner-border spinner-border-sm"></div>
-                                      ) : (
-                                        'Assign'
-                                      )}
-                                    </Button>
-                                  ) : isReadOnly ? (
-                                    <Button
-                                      color="info"
-                                      size="sm"
-                                      onClick={() => handleViewIncidentDetails(incident)}
-                                    >
-                                      View Details
-                                    </Button>
-                                  ) : (
-                                    <span className="text-muted">No Permission</span>
-                                  )}
+                                  <div className="d-flex gap-1">
+                                    {canAssign && !isReadOnly ? (
+                                      <Button
+                                        color="primary"
+                                        size="sm"
+                                        onClick={() => handleAssignIncident(incident)}
+                                        disabled={loadingTargets}
+                                      >
+                                        {loadingTargets ? (
+                                          <div className="spinner-border spinner-border-sm"></div>
+                                        ) : (
+                                          'Assign'
+                                        )}
+                                      </Button>
+                                    ) : isReadOnly ? (
+                                      <Button
+                                        color="info"
+                                        size="sm"
+                                        onClick={() => handleViewIncidentDetails(incident)}
+                                      >
+                                        View Details
+                                      </Button>
+                                    ) : (
+                                      <span className="text-muted small">No Permission</span>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -822,6 +803,13 @@ const AssignIncidents: React.FC<AssignIncidentsProps> = ({ userType, onBack }) =
         <ModalBody>
           {selectedIncident && (
             <div>
+              <div className="mb-3 p-3 bg-light rounded">
+                <h6 className="mb-2">Incident Details:</h6>
+                <p className="mb-1"><strong>Category:</strong> {getCategoryName(selectedIncident)}</p>
+                <p className="mb-1"><strong>Priority:</strong> {getPriorityName(selectedIncident)}</p>
+                <p className="mb-0"><strong>Status:</strong> {getStatus(selectedIncident)}</p>
+              </div>
+
               <Form>
                 <FormGroup>
                   <Label className="fw-bold">Select Team *</Label>
